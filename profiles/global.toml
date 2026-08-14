@@ -1,0 +1,55 @@
+schema_version = 1
+
+[profile]
+id = "global"
+implementation_owner = "dotnix"
+layer = "global-user"
+
+invariants = [
+  "Supports generic repositories without requiring Agent Core.",
+  "The build role may implement and orchestrate in generic repositories.",
+  "The plan role is read-only.",
+  "User, machine, provider, Ollama, and TUI settings remain dotnix ownership.",
+  "This profile does not define repository-specific lifecycle or Work Units.",
+  "Repository-local configuration may impose stronger authoritative boundaries.",
+]
+
+[assignments.build]
+primary_model = "sol"
+authority = "implementation-orchestrator"
+
+[assignments.plan]
+primary_model = "sol"
+authority = "read-only-planner"
+
+[assignments.architect]
+primary_model = "sol"
+authority = "read-only-specialist"
+
+[assignments.general]
+primary_model = "spark"
+authority = "bounded-implementation-worker"
+
+[assignments.explore]
+primary_model = "spark"
+authority = "read-only-reconnaissance"
+
+[assignments.verifier]
+primary_model = "spark"
+authority = "read-only-verification"
+
+[assignments.reviewer]
+primary_model = "terra"
+authority = "read-only-review"
+
+[assignments.investigator]
+primary_model = "terra"
+authority = "read-only-investigation"
+
+[assignments.security-reviewer]
+primary_model = "terra"
+authority = "read-only-security-review"
+
+[assignments.scout]
+primary_model = "spark"
+authority = "external-read-only-research"

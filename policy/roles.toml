@@ -1,0 +1,56 @@
+schema_version = 1
+
+[roles.build]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "primary"
+
+[roles.plan]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "primary"
+
+[roles.architect]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "subagent"
+
+[roles.general]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "subagent"
+
+[roles.explore]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "subagent"
+
+[roles.verifier]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "subagent"
+
+[roles.reviewer]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "subagent"
+
+[roles.investigator]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "subagent"
+
+[roles.security-reviewer]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "subagent"
+
+[roles.scout]
+classification = "COMMON"
+profiles = ["global", "agent-core"]
+kind = "subagent"
+
+[roles.task-orchestrator]
+classification = "AGENT_CORE_ONLY"
+profiles = ["agent-core"]
+kind = "subagent"

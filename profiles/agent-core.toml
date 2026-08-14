@@ -1,0 +1,59 @@
+schema_version = 1
+
+[profile]
+id = "agent-core"
+implementation_owner = "Templates"
+layer = "repository-local"
+
+invariants = [
+  "Repository-local configuration is authoritative.",
+  "The build role is the Main Orchestrator and does not directly implement Tasks.",
+  "A Task Orchestrator owns implementation for exactly one Task.",
+  "Raw Git and GitHub writes are restricted to guarded repository APIs.",
+  "Agent Core lifecycle, adoption, upgrade, VERSION, and UPSTREAM remain Templates ownership.",
+  "Project Adapter policy and implementation are not OpenCodePolicy ownership.",
+]
+
+[assignments.build]
+primary_model = "sol"
+authority = "main-orchestrator-no-direct-implementation"
+
+[assignments.plan]
+primary_model = "sol"
+authority = "repository-read-only-planner"
+
+[assignments.architect]
+primary_model = "sol"
+authority = "read-only-specialist"
+
+[assignments.task-orchestrator]
+primary_model = "spark"
+authority = "single-task-implementation-owner"
+
+[assignments.general]
+primary_model = "luna"
+authority = "depth-2-work-unit-leaf"
+
+[assignments.explore]
+primary_model = "luna"
+authority = "depth-2-read-only-reconnaissance"
+
+[assignments.verifier]
+primary_model = "spark"
+authority = "depth-2-read-only-verification"
+
+[assignments.reviewer]
+primary_model = "terra"
+authority = "depth-2-read-only-review"
+
+[assignments.investigator]
+primary_model = "terra"
+authority = "depth-2-read-only-investigation"
+
+[assignments.security-reviewer]
+primary_model = "terra"
+authority = "depth-2-read-only-security-review"
+
+[assignments.scout]
+primary_model = "spark"
+authority = "depth-2-external-read-only-research"

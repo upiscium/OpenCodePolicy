@@ -1,0 +1,76 @@
+schema_version = 1
+
+[[invariants]]
+id = "policy-not-implementation"
+scope = "common"
+statement = "OpenCodePolicy owns shared policy and compatibility contracts, not complete OpenCode configuration implementations."
+
+[[invariants]]
+id = "consumer-implementation-ownership"
+scope = "common"
+statement = "dotnix and Templates remain implementation owners of their respective profiles."
+
+[[invariants]]
+id = "model-alias-only"
+scope = "common"
+statement = "Role and fallback contracts reference canonical model aliases rather than provider model literals."
+
+[[invariants]]
+id = "fallback-preserves-role"
+scope = "common"
+statement = "Fallback changes only model identity and must preserve role authority and bounded objective."
+
+[[invariants]]
+id = "fallback-classified-only"
+scope = "common"
+statement = "Fallback is limited to classified quota, usage, rate-limit, or HTTP 429 failures."
+
+[[invariants]]
+id = "non-fallback-precedence"
+scope = "common"
+statement = "Authentication, authorization, permission, context, validation, tool, and safety failures never trigger fallback."
+
+[[invariants]]
+id = "no-unconfigured-substitution"
+scope = "common"
+statement = "An unavailable model may only be replaced through an explicitly configured fallback."
+
+[[invariants]]
+id = "consumer-audit-read-only"
+scope = "common"
+statement = "Consumer auditing observes dotnix and Templates without modifying either repository."
+
+[[profile_variants]]
+id = "build-authority"
+field = "authority"
+global = "implementation-orchestrator"
+agent-core = "main-orchestrator-no-direct-implementation"
+classification = "PROFILE_VARIANT"
+
+[[profile_variants]]
+id = "general-authority"
+field = "authority"
+global = "bounded-implementation-worker"
+agent-core = "depth-2-work-unit-leaf"
+classification = "PROFILE_VARIANT"
+
+[[profile_variants]]
+id = "general-primary-model"
+field = "primary_model"
+global = "spark"
+agent-core = "luna"
+classification = "PROFILE_VARIANT"
+
+[[profile_variants]]
+id = "explore-primary-model"
+field = "primary_model"
+global = "spark"
+agent-core = "luna"
+classification = "PROFILE_VARIANT"
+
+[[profile_variants]]
+id = "task-orchestrator-presence"
+field = "role_presence"
+global = "absent"
+agent-core = "present"
+classification = "AGENT_CORE_ONLY"
