@@ -238,7 +238,8 @@ def validate_policy(root: Path = ROOT) -> list[str]:
         errors.append(f"policy/fallback.toml: roles without fallback contracts {sorted(missing_fallbacks)}")
 
     semantic_ids: dict[str, str] = {}
-    for section in ("invariants", "profile_variants"):
+    difference_targets: set[tuple[str, str]] = set()
+    for section in ("invariants", "intentional_differences"):
         entries = docs["invariants"].get(section, [])
         if not isinstance(entries, list):
             errors.append(f"policy/invariants.toml: {section} must be an array of tables")
@@ -256,8 +257,38 @@ def validate_policy(root: Path = ROOT) -> list[str]:
                 semantic_ids[semantic_id] = section
             if section == "invariants" and (entry.get("scope") not in {"common", *profiles} or not entry.get("statement")):
                 errors.append(f"invariants.{semantic_id}: scope and statement are required")
-            if section == "profile_variants" and entry.get("classification") not in VALID_CLASSIFICATIONS:
-                errors.append(f"profile_variants.{semantic_id}: invalid classification")
+            if section == "intentional_differences":
+                role_id = entry.get("role")
+                field = entry.get("field")
+                if role_id not in roles:
+                    errors.append(f"intentional_differences.{semantic_id}: unknown role {role_id!r}")
+                    continue
+                if roles[role_id].get("classification") != "COMMON":
+                    errors.append(f"intentional_differences.{semantic_id}: role must be COMMON")
+                if field not in {"primary_model", "authority"}:
+                    errors.append(f"intentional_differences.{semantic_id}: unsupported field {field!r}")
+                    continue
+                target = (role_id, field)
+                if target in difference_targets:
+                    errors.append(
+                        f"intentional_differences.{semantic_id}: duplicate role/field declaration {target!r}"
+                    )
+                difference_targets.add(target)
+                values = [assignments[profile_id].get(role_id, {}).get(field) for profile_id in sorted(profiles)]
+                if any(value is None for value in values):
+                    errors.append(
+                        f"intentional_differences.{semantic_id}: field {field!r} must resolve in both profiles"
+                    )
+                elif values[0] == values[1]:
+                    errors.append(
+                        f"intentional_differences.{semantic_id}: declared field does not differ between profiles"
+                    )
+                forbidden_value_keys = {"global", "agent-core", "classification"} & set(entry)
+                if forbidden_value_keys:
+                    errors.append(
+                        f"intentional_differences.{semantic_id}: canonical values must not be duplicated "
+                        f"({sorted(forbidden_value_keys)})"
+                    )
 
     for name, doc in docs.items():
         if name == "models":

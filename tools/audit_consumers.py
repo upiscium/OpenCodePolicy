@@ -73,22 +73,34 @@ def audit(dotnix: Path, templates: Path, policy_root: Path = ROOT) -> tuple[list
             continue
         expected_roles = {role_id for role_id, role in roles.items() if profile_id in role["profiles"]}
         for role_id in sorted(expected_roles):
+            role_contract = roles[role_id]
             assignment = docs[profile_id]["assignments"][role_id]
             expected_model = models[assignment["primary_model"]]["id"]
+            expected_mode = role_contract["kind"]
             primary_path = agent_dir / f"{role_id}.md"
             primary = parse_frontmatter(primary_path)
             if not primary_path.is_file():
                 lines.append(f"MISSING UNEXPECTED_DRIFT profile={profile_id} role={role_id} agent={role_id}")
                 counts["MISSING"] += 1
-            elif primary.get("model") != expected_model:
-                lines.append(
-                    f"DIFF UNEXPECTED_DRIFT profile={profile_id} role={role_id} primary_model="
-                    f"{primary.get('model')!r} expected={expected_model!r}"
-                )
-                counts["DIFF"] += 1
             else:
-                lines.append(f"PASS profile={profile_id} role={role_id} primary_model={expected_model}")
-                counts["PASS"] += 1
+                if primary.get("model") != expected_model:
+                    lines.append(
+                        f"DIFF UNEXPECTED_DRIFT profile={profile_id} role={role_id} primary_model="
+                        f"{primary.get('model')!r} expected={expected_model!r}"
+                    )
+                    counts["DIFF"] += 1
+                else:
+                    lines.append(f"PASS profile={profile_id} role={role_id} primary_model={expected_model}")
+                    counts["PASS"] += 1
+                if primary.get("mode") != expected_mode:
+                    lines.append(
+                        f"DIFF UNEXPECTED_DRIFT profile={profile_id} role={role_id} "
+                        f"mode={primary.get('mode')!r} expected={expected_mode!r}"
+                    )
+                    counts["DIFF"] += 1
+                else:
+                    lines.append(f"PASS profile={profile_id} role={role_id} mode={expected_mode}")
+                    counts["PASS"] += 1
 
             fallback = fallbacks[role_id]
             fallback_agent = fallback["fallback_agent"]
@@ -101,18 +113,33 @@ def audit(dotnix: Path, templates: Path, policy_root: Path = ROOT) -> tuple[list
                     f"fallback_agent={fallback_agent} expected_model={expected_fallback_model}"
                 )
                 counts["MISSING"] += 1
-            elif fallback_data.get("model") != expected_fallback_model:
-                lines.append(
-                    f"DIFF UNEXPECTED_DRIFT profile={profile_id} role={role_id} fallback_agent={fallback_agent} "
-                    f"model={fallback_data.get('model')!r} expected={expected_fallback_model!r}"
-                )
-                counts["DIFF"] += 1
             else:
-                lines.append(
-                    f"PASS profile={profile_id} role={role_id} fallback_agent={fallback_agent} "
-                    f"model={expected_fallback_model}"
-                )
-                counts["PASS"] += 1
+                if fallback_data.get("model") != expected_fallback_model:
+                    lines.append(
+                        f"DIFF UNEXPECTED_DRIFT profile={profile_id} role={role_id} "
+                        f"fallback_agent={fallback_agent} model={fallback_data.get('model')!r} "
+                        f"expected={expected_fallback_model!r}"
+                    )
+                    counts["DIFF"] += 1
+                else:
+                    lines.append(
+                        f"PASS profile={profile_id} role={role_id} fallback_agent={fallback_agent} "
+                        f"model={expected_fallback_model}"
+                    )
+                    counts["PASS"] += 1
+                if fallback_data.get("mode") != expected_mode:
+                    lines.append(
+                        f"DIFF UNEXPECTED_DRIFT profile={profile_id} role={role_id} "
+                        f"fallback_agent={fallback_agent} mode={fallback_data.get('mode')!r} "
+                        f"expected={expected_mode!r}"
+                    )
+                    counts["DIFF"] += 1
+                else:
+                    lines.append(
+                        f"PASS profile={profile_id} role={role_id} fallback_agent={fallback_agent} "
+                        f"mode={expected_mode}"
+                    )
+                    counts["PASS"] += 1
 
             if profile_id == "agent-core" and templates_bindings is not None:
                 binding = templates_bindings.get(role_id)
@@ -148,17 +175,27 @@ def audit(dotnix: Path, templates: Path, policy_root: Path = ROOT) -> tuple[list
 
         forbidden_roles = set(roles) - expected_roles
         for role_id in sorted(forbidden_roles):
-            if (agent_dir / f"{role_id}.md").exists():
-                lines.append(f"DIFF UNEXPECTED_DRIFT profile={profile_id} role={role_id} expected=absent")
-                counts["DIFF"] += 1
+            forbidden_agents = (role_id, fallbacks[role_id]["fallback_agent"])
+            present_agents = [agent for agent in forbidden_agents if (agent_dir / f"{agent}.md").exists()]
+            if present_agents:
+                for agent in present_agents:
+                    lines.append(
+                        f"DIFF UNEXPECTED_DRIFT profile={profile_id} role={role_id} "
+                        f"agent={agent} expected=absent"
+                    )
+                    counts["DIFF"] += 1
             else:
                 lines.append(f"INTENTIONAL_DIFFERENCE profile={profile_id} role={role_id} expected=absent")
                 counts["INTENTIONAL_DIFFERENCE"] += 1
 
-    for variant in docs["invariants"].get("profile_variants", []):
+    for difference in docs["invariants"].get("intentional_differences", []):
+        role_id = difference["role"]
+        field = difference["field"]
+        global_value = docs["global"]["assignments"][role_id][field]
+        agent_core_value = docs["agent-core"]["assignments"][role_id][field]
         lines.append(
-            f"INTENTIONAL_DIFFERENCE id={variant['id']} field={variant['field']} "
-            f"global={variant['global']} agent-core={variant['agent-core']}"
+            f"INTENTIONAL_DIFFERENCE id={difference['id']} role={role_id} field={field} "
+            f"global={global_value} agent-core={agent_core_value}"
         )
         counts["INTENTIONAL_DIFFERENCE"] += 1
     return lines, counts

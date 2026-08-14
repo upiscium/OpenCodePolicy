@@ -61,7 +61,7 @@ The same role identity does not imply identical prompts, permissions, or authori
 - `policy/models.toml`: model aliases, exact provider IDs, and quota families. Provider model literals appear only here.
 - `policy/roles.toml`: canonical role taxonomy, profile applicability, and primary/subagent classification.
 - `policy/fallback.toml`: fallback agents, model aliases, automatic/manual selection, one-retry limit, and failure classification.
-- `policy/invariants.toml`: common invariants and intentional profile variants.
+- `policy/invariants.toml`: common invariants and value-free declarations of allowed profile differences. Compared values are derived from canonical role/profile data.
 - `profiles/*.toml`: profile-specific primary assignments, authority semantics, and ownership.
 
 The target policy defines `plan-fallback` as a **COMMON** capability. dotnix currently conforms. Templates currently lacks the fallback agent and binding; that is unexpected consumer drift, not an intentional profile difference. Phase 1 records but does not repair it.
@@ -91,7 +91,7 @@ python tools/audit_consumers.py \
   --templates /path/to/Templates
 ```
 
-The audit is read-only and never repairs consumers. It reports `PASS`, `INTENTIONAL_DIFFERENCE`, `DIFF`, and `MISSING`; unexpected mismatches are additionally labeled `UNEXPECTED_DRIFT`. Add `--strict` when unexpected drift should produce a non-zero exit status.
+The audit is read-only and never repairs consumers. It checks role and fallback existence, model assignments, primary/subagent modes, and Agent-Core fallback bindings. It reports `PASS`, `INTENTIONAL_DIFFERENCE`, `DIFF`, and `MISSING`; unexpected mismatches are additionally labeled `UNEXPECTED_DRIFT`. Add `--strict` when unexpected drift should produce a non-zero exit status.
 
 Consumer repositories are intentionally not cloned by CI. Policy CI therefore remains deterministic when either consumer's `main` branch changes.
 

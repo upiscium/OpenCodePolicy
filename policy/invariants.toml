@@ -21,6 +21,11 @@ scope = "common"
 statement = "Fallback changes only model identity and must preserve role authority and bounded objective."
 
 [[invariants]]
+id = "fallback-preserves-mode"
+scope = "common"
+statement = "A fallback agent has the same primary or subagent mode contract as its canonical role."
+
+[[invariants]]
 id = "fallback-classified-only"
 scope = "common"
 statement = "Fallback is limited to classified quota, usage, rate-limit, or HTTP 429 failures."
@@ -40,37 +45,22 @@ id = "consumer-audit-read-only"
 scope = "common"
 statement = "Consumer auditing observes dotnix and Templates without modifying either repository."
 
-[[profile_variants]]
+[[intentional_differences]]
 id = "build-authority"
+role = "build"
 field = "authority"
-global = "implementation-orchestrator"
-agent-core = "main-orchestrator-no-direct-implementation"
-classification = "PROFILE_VARIANT"
 
-[[profile_variants]]
+[[intentional_differences]]
 id = "general-authority"
+role = "general"
 field = "authority"
-global = "bounded-implementation-worker"
-agent-core = "depth-2-work-unit-leaf"
-classification = "PROFILE_VARIANT"
 
-[[profile_variants]]
+[[intentional_differences]]
 id = "general-primary-model"
+role = "general"
 field = "primary_model"
-global = "spark"
-agent-core = "luna"
-classification = "PROFILE_VARIANT"
 
-[[profile_variants]]
+[[intentional_differences]]
 id = "explore-primary-model"
+role = "explore"
 field = "primary_model"
-global = "spark"
-agent-core = "luna"
-classification = "PROFILE_VARIANT"
-
-[[profile_variants]]
-id = "task-orchestrator-presence"
-field = "role_presence"
-global = "absent"
-agent-core = "present"
-classification = "AGENT_CORE_ONLY"
