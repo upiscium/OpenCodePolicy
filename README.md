@@ -42,7 +42,7 @@ There is no dependency from OpenCodePolicy to Templates Agent Core generation or
 - repository policy, adoption, upgrade, `VERSION`, `UPSTREAM`, and Project Adapter;
 - complete Agent-Core prompts, commands, and skills.
 
-Neither complete prompt implementations nor command/skill implementations move in Phase 1. OpenCodePolicy does not generate, materialize, synchronize, or modify either consumer.
+Neither complete prompt implementations nor command/skill implementations move here. OpenCodePolicy does not generate, materialize, synchronize, or modify either consumer.
 
 ## Profiles
 
@@ -64,7 +64,7 @@ The same role identity does not imply identical prompts, permissions, or authori
 - `policy/invariants.toml`: common invariants and value-free declarations of allowed profile differences. Compared values are derived from canonical role/profile data.
 - `profiles/*.toml`: profile-specific primary assignments, authority semantics, and ownership.
 
-The target policy defines `plan-fallback` as a **COMMON** capability. dotnix currently conforms. Templates currently lacks the fallback agent and binding; that is unexpected consumer drift, not an intentional profile difference. Phase 1 records but does not repair it.
+The target policy defines `plan-fallback` as a **COMMON** capability. Both current consumers implement that capability; explicit audits detect future drift without modifying either repository.
 
 ## Intentionally not canonical
 
@@ -77,11 +77,30 @@ Python 3.11 or newer is required for standard-library `tomllib`.
 ```sh
 python tools/validate_policy.py
 python -m unittest discover -s tests -v
+opencode-policy validate
 ```
 
 The validator parses all TOML documents and checks semantic ID uniqueness, model/role/profile references, required fields, model ID syntax, applicability consistency, fallback self-reference, quota-family separation, and role/fallback contradictions.
 
 ## Audit consumers
+
+The canonical CLI audits one explicitly selected profile without requiring the other consumer:
+
+```sh
+opencode-policy audit-consumer \
+  --profile global \
+  --consumer /path/to/dotnix \
+  --strict
+
+opencode-policy audit-consumer \
+  --profile agent-core \
+  --consumer /path/to/Templates \
+  --strict
+```
+
+Profile selection is mandatory and is never inferred from a directory name. Audits only inspect the supplied filesystem tree, so Nix store paths and other read-only source trees are supported. A strict audit exits non-zero for invalid policy, invalid consumer paths, `DIFF`, or `MISSING` results.
+
+The original dual-consumer workflow remains compatible:
 
 Audit explicit local checkouts of current consumer implementations:
 
@@ -95,6 +114,47 @@ The audit is read-only and never repairs consumers. It checks role and fallback 
 
 Consumer repositories are intentionally not cloned by CI. Policy CI therefore remains deterministic when either consumer's `main` branch changes.
 
+## Nix flake interface
+
+The flake supports `x86_64-linux` and `aarch64-linux` and exposes:
+
+- `packages.<system>.default` and `packages.<system>.opencode-policy`;
+- `apps.<system>.default` for the canonical `opencode-policy <subcommand>` interface;
+- `checks.<system>.policy`, `checks.<system>.audit-consumer`, and `checks.<system>.tests`;
+- `devShells.<system>.default` with Python 3.
+
+Examples:
+
+```sh
+nix build .#opencode-policy
+nix run .# -- validate
+nix flake check
+nix develop
+```
+
+The package contains only Python, policy/profile documents, and the standard-library tooling. Runtime audit execution does not require Git, GitHub CLI, network access, or a writable consumer checkout.
+
+## Consumer dependency model
+
+Future consumers can pin this repository as a normal flake input:
+
+```nix
+inputs.opencodePolicy.url = "github:upiscium/OpenCodePolicy";
+inputs.opencodePolicy.inputs.nixpkgs.follows = "nixpkgs";
+```
+
+The consumer's `flake.lock` owns the exact OpenCodePolicy Git revision. The consumer check invocation separately owns the explicit profile selection: Templates uses `--profile agent-core`, while dotnix uses `--profile global`. Profiles are not stored in `flake.lock`.
+
+The locked Git revision is dependency identity. It is separate from `schema_version = 1`, which continues to identify the machine-readable policy document schema.
+
+Consumer updates are deliberate dependency updates, for example:
+
+```sh
+nix flake update opencodePolicy
+```
+
+Consumers do not follow OpenCodePolicy `main` at audit runtime. OpenCodePolicy has no input or runtime dependency on Templates or dotnix, preserving the one-way dependency direction.
+
 ## Current consumers
 
 | Consumer | Profile | Implementation owner |
@@ -104,4 +164,4 @@ Consumer repositories are intentionally not cloned by CI. Policy CI therefore re
 
 ## Future integration direction
 
-A later phase may add explicit, reviewable consumer alignment or compatibility workflows. Any future materialization must preserve implementation ownership, avoid runtime network dependencies, and prevent dependency cycles. Phase 1 only establishes and audits the contract.
+A later phase may add the pinned flake input and strict single-consumer checks to each consumer. Any future integration must preserve implementation ownership, avoid runtime network dependencies, and prevent dependency cycles. OpenCodePolicy still does not generate or materialize consumer configuration.
