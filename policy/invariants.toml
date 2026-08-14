@@ -1,0 +1,66 @@
+schema_version = 1
+
+[[invariants]]
+id = "policy-not-implementation"
+scope = "common"
+statement = "OpenCodePolicy owns shared policy and compatibility contracts, not complete OpenCode configuration implementations."
+
+[[invariants]]
+id = "consumer-implementation-ownership"
+scope = "common"
+statement = "dotnix and Templates remain implementation owners of their respective profiles."
+
+[[invariants]]
+id = "model-alias-only"
+scope = "common"
+statement = "Role and fallback contracts reference canonical model aliases rather than provider model literals."
+
+[[invariants]]
+id = "fallback-preserves-role"
+scope = "common"
+statement = "Fallback changes only model identity and must preserve role authority and bounded objective."
+
+[[invariants]]
+id = "fallback-preserves-mode"
+scope = "common"
+statement = "A fallback agent has the same primary or subagent mode contract as its canonical role."
+
+[[invariants]]
+id = "fallback-classified-only"
+scope = "common"
+statement = "Fallback is limited to classified quota, usage, rate-limit, or HTTP 429 failures."
+
+[[invariants]]
+id = "non-fallback-precedence"
+scope = "common"
+statement = "Authentication, authorization, permission, context, validation, tool, and safety failures never trigger fallback."
+
+[[invariants]]
+id = "no-unconfigured-substitution"
+scope = "common"
+statement = "An unavailable model may only be replaced through an explicitly configured fallback."
+
+[[invariants]]
+id = "consumer-audit-read-only"
+scope = "common"
+statement = "Consumer auditing observes dotnix and Templates without modifying either repository."
+
+[[intentional_differences]]
+id = "build-authority"
+role = "build"
+field = "authority"
+
+[[intentional_differences]]
+id = "general-authority"
+role = "general"
+field = "authority"
+
+[[intentional_differences]]
+id = "general-primary-model"
+role = "general"
+field = "primary_model"
+
+[[intentional_differences]]
+id = "explore-primary-model"
+role = "explore"
+field = "primary_model"

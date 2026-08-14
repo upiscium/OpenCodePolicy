@@ -1,0 +1,23 @@
+schema_version = 1
+
+[quota_families.gpt56]
+description = "Shared quota family for GPT-5.6 model identities."
+
+[quota_families.spark]
+description = "Independent Codex Spark quota family."
+
+[models.sol]
+id = "openai/gpt-5.6-sol"
+quota_family = "gpt56"
+
+[models.terra]
+id = "openai/gpt-5.6-terra"
+quota_family = "gpt56"
+
+[models.luna]
+id = "openai/gpt-5.6-luna"
+quota_family = "gpt56"
+
+[models.spark]
+id = "openai/gpt-5.3-codex-spark"
+quota_family = "spark"
