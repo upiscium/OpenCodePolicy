@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tomllib
 from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
@@ -37,19 +36,6 @@ def parse_frontmatter(path: Path) -> dict[str, Any]:
     return result
 
 
-def _load_agent_core_bindings(consumer_root: Path) -> tuple[dict[str, Any] | None, str | None]:
-    fallback_path = consumer_root / "components/agent-core/.automation/model-fallback.toml"
-    try:
-        with fallback_path.open("rb") as handle:
-            parsed = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError):
-        return None, f"MISSING UNEXPECTED_DRIFT profile=agent-core fallback_policy={fallback_path}"
-    roles = parsed.get("roles", {})
-    if not isinstance(roles, dict):
-        return {}, None
-    return roles, None
-
-
 def _audit_profile_contract(
     profile: str,
     consumer_root: Path,
@@ -60,15 +46,22 @@ def _audit_profile_contract(
 
     models = documents["models"]["models"]
     roles = documents["roles"]["roles"]
-    fallbacks = documents["fallback"]["fallbacks"]
     lines: list[str] = []
     counts: Counter[str] = Counter()
-    bindings: dict[str, Any] | None = None
+
     if profile == "agent-core":
-        bindings, binding_error = _load_agent_core_bindings(consumer_root)
-        if binding_error:
-            lines.append(binding_error)
-            counts["MISSING"] += 1
+        model_fallback_path = (
+            consumer_root / "components/agent-core/.automation/model-fallback.toml"
+        )
+        if model_fallback_path.exists() or model_fallback_path.is_symlink():
+            lines.append(
+                "DIFF UNEXPECTED_DRIFT profile=agent-core "
+                "model_fallback_policy=model-fallback.toml expected=absent"
+            )
+            counts["DIFF"] += 1
+        else:
+            lines.append("PASS profile=agent-core model_fallback_policy=absent")
+            counts["PASS"] += 1
 
     agent_dir = consumer_root / PROFILE_AGENT_DIRS[profile]
     if not agent_dir.is_dir():
@@ -106,89 +99,29 @@ def _audit_profile_contract(
                 lines.append(f"PASS profile={profile} role={role_id} mode={expected_mode}")
                 counts["PASS"] += 1
 
-        fallback = fallbacks[role_id]
-        fallback_agent = fallback["fallback_agent"]
-        expected_fallback_model = models[fallback["target_models"][profile]]["id"]
-        fallback_path = agent_dir / f"{fallback_agent}.md"
-        fallback_data = parse_frontmatter(fallback_path)
-        if not fallback_path.is_file():
-            lines.append(
-                f"MISSING UNEXPECTED_DRIFT profile={profile} role={role_id} "
-                f"fallback_agent={fallback_agent} expected_model={expected_fallback_model}"
-            )
-            counts["MISSING"] += 1
-        else:
-            if fallback_data.get("model") != expected_fallback_model:
-                lines.append(
-                    f"DIFF UNEXPECTED_DRIFT profile={profile} role={role_id} "
-                    f"fallback_agent={fallback_agent} model={fallback_data.get('model')!r} "
-                    f"expected={expected_fallback_model!r}"
-                )
-                counts["DIFF"] += 1
-            else:
-                lines.append(
-                    f"PASS profile={profile} role={role_id} fallback_agent={fallback_agent} "
-                    f"model={expected_fallback_model}"
-                )
-                counts["PASS"] += 1
-            if fallback_data.get("mode") != expected_mode:
-                lines.append(
-                    f"DIFF UNEXPECTED_DRIFT profile={profile} role={role_id} "
-                    f"fallback_agent={fallback_agent} mode={fallback_data.get('mode')!r} "
-                    f"expected={expected_mode!r}"
-                )
-                counts["DIFF"] += 1
-            else:
-                lines.append(
-                    f"PASS profile={profile} role={role_id} fallback_agent={fallback_agent} "
-                    f"mode={expected_mode}"
-                )
-                counts["PASS"] += 1
-
-        if profile == "agent-core" and bindings is not None:
-            binding = bindings.get(role_id)
-            if not isinstance(binding, dict):
-                lines.append(
-                    f"MISSING UNEXPECTED_DRIFT profile=agent-core role={role_id} "
-                    "fallback_binding=model-fallback.toml"
-                )
-                counts["MISSING"] += 1
-            else:
-                expected_binding = {
-                    "primary_agent": role_id,
-                    "primary_model": expected_model,
-                    "fallback_agents": [fallback_agent],
-                    "fallback_models": [expected_fallback_model],
-                    "automatic": fallback["automatic"][profile],
-                }
-                differences = {
-                    key: (binding.get(key), value)
-                    for key, value in expected_binding.items()
-                    if binding.get(key) != value
-                }
-                if differences:
-                    lines.append(
-                        f"DIFF UNEXPECTED_DRIFT profile=agent-core role={role_id} "
-                        f"fallback_binding={differences!r}"
-                    )
-                    counts["DIFF"] += 1
-                else:
-                    lines.append(f"PASS profile=agent-core role={role_id} fallback_binding=model-fallback.toml")
-                    counts["PASS"] += 1
-
     for role_id in sorted(set(roles) - expected_roles):
-        forbidden_agents = (role_id, fallbacks[role_id]["fallback_agent"])
-        present_agents = [agent for agent in forbidden_agents if (agent_dir / f"{agent}.md").exists()]
-        if present_agents:
-            for agent in present_agents:
-                lines.append(
-                    f"DIFF UNEXPECTED_DRIFT profile={profile} role={role_id} "
-                    f"agent={agent} expected=absent"
-                )
-                counts["DIFF"] += 1
+        if (agent_dir / f"{role_id}.md").exists():
+            lines.append(
+                f"DIFF UNEXPECTED_DRIFT profile={profile} role={role_id} "
+                f"agent={role_id} expected=absent"
+            )
+            counts["DIFF"] += 1
         else:
             lines.append(f"INTENTIONAL_DIFFERENCE profile={profile} role={role_id} expected=absent")
             counts["INTENTIONAL_DIFFERENCE"] += 1
+
+    fallback_residue = sorted(agent_dir.glob("*-fallback.md"))
+    if fallback_residue:
+        for path in fallback_residue:
+            lines.append(
+                f"DIFF UNEXPECTED_DRIFT profile={profile} agent={path.stem} "
+                "fallback_residue=forbidden"
+            )
+            counts["DIFF"] += 1
+    else:
+        lines.append(f"PASS profile={profile} fallback_agents=absent")
+        counts["PASS"] += 1
+
     return lines, counts
 
 

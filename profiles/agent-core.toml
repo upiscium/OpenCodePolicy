@@ -27,7 +27,7 @@ primary_model = "sol"
 authority = "read-only-specialist"
 
 [assignments.task-orchestrator]
-primary_model = "spark"
+primary_model = "sol"
 authority = "single-task-implementation-owner"
 
 [assignments.general]
@@ -39,7 +39,7 @@ primary_model = "luna"
 authority = "depth-2-read-only-reconnaissance"
 
 [assignments.verifier]
-primary_model = "spark"
+primary_model = "luna"
 authority = "depth-2-read-only-verification"
 
 [assignments.reviewer]
@@ -55,5 +55,5 @@ primary_model = "terra"
 authority = "depth-2-read-only-security-review"
 
 [assignments.scout]
-primary_model = "spark"
+primary_model = "luna"
 authority = "depth-2-external-read-only-research"
