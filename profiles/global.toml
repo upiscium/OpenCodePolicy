@@ -27,15 +27,15 @@ primary_model = "sol"
 authority = "read-only-specialist"
 
 [assignments.general]
-primary_model = "spark"
+primary_model = "luna"
 authority = "bounded-implementation-worker"
 
 [assignments.explore]
-primary_model = "spark"
+primary_model = "luna"
 authority = "read-only-reconnaissance"
 
 [assignments.verifier]
-primary_model = "spark"
+primary_model = "luna"
 authority = "read-only-verification"
 
 [assignments.reviewer]
@@ -51,5 +51,5 @@ primary_model = "terra"
 authority = "read-only-security-review"
 
 [assignments.scout]
-primary_model = "spark"
+primary_model = "luna"
 authority = "external-read-only-research"

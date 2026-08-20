@@ -18,16 +18,16 @@ class PolicyContractTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.docs, cls.parse_errors = load_policy(ROOT)
 
-    def make_consumer_fixture(self, root: Path) -> tuple[Path, Path, Path, Path, Path]:
+    def make_consumer_fixture(self, root: Path) -> tuple[Path, Path, Path, Path]:
         dotnix_root = root / "dotnix"
         templates_root = root / "Templates"
         dotnix_agents = dotnix_root / "config.d/opencode/agents"
         templates_agents = templates_root / "components/agent-core/.opencode/agents"
         dotnix_agents.mkdir(parents=True)
         templates_agents.mkdir(parents=True)
+
         models = self.docs["models"]["models"]
         roles = self.docs["roles"]["roles"]
-        fallbacks = self.docs["fallback"]["fallbacks"]
         for profile, directory in (("global", dotnix_agents), ("agent-core", templates_agents)):
             for role, assignment in self.docs[profile]["assignments"].items():
                 mode = roles[role]["kind"]
@@ -35,38 +35,7 @@ class PolicyContractTests(unittest.TestCase):
                 (directory / f"{role}.md").write_text(
                     f"---\nmode: {mode}\nmodel: {model}\n---\n", encoding="utf-8"
                 )
-                fallback = fallbacks[role]
-                fallback_model = models[fallback["target_models"][profile]]["id"]
-                (directory / f"{fallback['fallback_agent']}.md").write_text(
-                    f"---\nmode: {mode}\nmodel: {fallback_model}\n---\n", encoding="utf-8"
-                )
-        binding_path = templates_root / "components/agent-core/.automation/model-fallback.toml"
-        binding_path.parent.mkdir(parents=True)
-        binding_sections = ["version = 1"]
-        for role, assignment in self.docs["agent-core"]["assignments"].items():
-            fallback = fallbacks[role]
-            primary_model = models[assignment["primary_model"]]["id"]
-            fallback_model = models[fallback["target_models"]["agent-core"]]["id"]
-            automatic = str(fallback["automatic"]["agent-core"]).lower()
-            binding_sections.append(
-                f'\n[roles."{role}"]\n'
-                f'primary_agent = "{role}"\n'
-                f'primary_model = "{primary_model}"\n'
-                f'fallback_agents = ["{fallback["fallback_agent"]}"]\n'
-                f'fallback_models = ["{fallback_model}"]\n'
-                f'automatic = {automatic}\n'
-            )
-        binding_path.write_text("".join(binding_sections), encoding="utf-8")
-        return dotnix_root, templates_root, dotnix_agents, templates_agents, binding_path
-
-    @staticmethod
-    def remove_fallback_binding(binding_path: Path, role: str) -> None:
-        binding_text = binding_path.read_text(encoding="utf-8")
-        start = binding_text.index(f'\n[roles."{role}"]')
-        end = binding_text.find("\n[roles.", start + 1)
-        if end == -1:
-            end = len(binding_text)
-        binding_path.write_text(binding_text[:start] + binding_text[end:], encoding="utf-8")
+        return dotnix_root, templates_root, dotnix_agents, templates_agents
 
     def test_policy_is_valid(self) -> None:
         self.assertEqual([], validate_policy(ROOT))
@@ -87,34 +56,58 @@ class PolicyContractTests(unittest.TestCase):
             shutil.copytree(ROOT / "profiles", root / "profiles")
             invariants_path = root / "policy/invariants.toml"
             contents = invariants_path.read_text(encoding="utf-8").replace(
-                'role = "build"\nfield = "authority"',
-                'role = "build"\nfield = "authority"\nglobal = "duplicated-value"',
+                'role = "general"\nfield = "authority"',
+                'role = "general"\nfield = "authority"\nglobal = "foo"\nagent-core = "bar"',
                 1,
             )
             invariants_path.write_text(contents, encoding="utf-8")
             errors = validate_policy(root)
             self.assertTrue(any("canonical values must not be duplicated" in error for error in errors))
 
-    def test_all_model_references_resolve(self) -> None:
+    def test_exact_model_aliases_and_no_provider_literals(self) -> None:
+        self.assertEqual([], self.parse_errors)
+        models = self.docs["models"]["models"]
+        self.assertEqual({"sol", "terra", "luna"}, set(models.keys()))
+        self.assertEqual(
+            {
+                "sol": "openai/gpt-5.6-sol",
+                "terra": "openai/gpt-5.6-terra",
+                "luna": "openai/gpt-5.6-luna",
+            },
+            {alias: model["id"] for alias, model in models.items()},
+        )
+        model_ids = {model["id"] for model in models.values()}
+        self.assertNotIn("spark", {alias for alias in models})
+        self.assertNotIn("openai/gpt-5.3-codex-spark", model_ids)
+        self.assertNotIn("openai/gpt-5.3-codex-terra", model_ids)
+        self.assertNotIn("openai/gpt-5.3-codex-sol", model_ids)
+        self.assertFalse(any("spark" in model_id for model_id in model_ids))
+        self.assertEqual({"gpt56"}, set(self.docs["models"]["quota_families"]))
+        self.assertTrue(all(model["quota_family"] == "gpt56" for model in models.values()))
+        self.assertFalse((ROOT / "policy/fallback.toml").exists())
+
+    def test_fixed_model_invariants_replace_routing_invariants(self) -> None:
+        identifiers = {item["id"] for item in self.docs["invariants"]["invariants"]}
+        self.assertTrue(
+            {
+                "model-alias-only",
+                "single-configured-model",
+                "model-substitution-forbidden",
+                "alternate-model-retry-forbidden",
+                "availability-fail-closed",
+                "exact-model-failure-reporting",
+                "fallback-agents-forbidden",
+                "consumer-audit-read-only",
+            }.issubset(identifiers)
+        )
+        self.assertFalse(any(identifier.startswith("fallback-preserves-") for identifier in identifiers))
+
+    def test_all_model_assignments_are_known(self) -> None:
         self.assertEqual([], self.parse_errors)
         models = self.docs["models"]["models"]
         for profile in ("global", "agent-core"):
             for assignment in self.docs[profile]["assignments"].values():
                 self.assertIn(assignment["primary_model"], models)
-
-    def test_all_fallback_references_resolve(self) -> None:
-        models = self.docs["models"]["models"]
-        roles = self.docs["roles"]["roles"]
-        for fallback in self.docs["fallback"]["fallbacks"].values():
-            self.assertIn(fallback["role"], roles)
-            for model in fallback["target_models"].values():
-                self.assertIn(model, models)
-
-    def test_profile_only_roles_are_not_common(self) -> None:
-        task_orchestrator = self.docs["roles"]["roles"]["task-orchestrator"]
-        self.assertEqual("AGENT_CORE_ONLY", task_orchestrator["classification"])
-        self.assertEqual(["agent-core"], task_orchestrator["profiles"])
-        self.assertNotIn("task-orchestrator", self.docs["global"]["assignments"])
 
     def test_profile_scoping_does_not_force_roles(self) -> None:
         for role_id, role in self.docs["roles"]["roles"].items():
@@ -123,11 +116,11 @@ class PolicyContractTests(unittest.TestCase):
             if role["classification"] == "AGENT_CORE_ONLY":
                 self.assertNotIn(role_id, self.docs["global"]["assignments"])
 
-    def test_plan_fallback_is_common_target_policy(self) -> None:
-        plan = self.docs["fallback"]["fallbacks"]["plan"]
-        self.assertEqual({"global", "agent-core"}, set(plan["profiles"]))
-        self.assertEqual("plan-fallback", plan["fallback_agent"])
-        self.assertEqual({"global": "spark", "agent-core": "spark"}, plan["target_models"])
+    def test_profile_only_roles_are_not_common(self) -> None:
+        task_orchestrator = self.docs["roles"]["roles"]["task-orchestrator"]
+        self.assertEqual("AGENT_CORE_ONLY", task_orchestrator["classification"])
+        self.assertEqual(["agent-core"], task_orchestrator["profiles"])
+        self.assertNotIn("task-orchestrator", self.docs["global"]["assignments"])
 
     def test_quota_family_is_defined_once_per_model(self) -> None:
         families = self.docs["models"]["quota_families"]
@@ -140,134 +133,191 @@ class PolicyContractTests(unittest.TestCase):
             "build": ("sol", "sol"),
             "plan": ("sol", "sol"),
             "architect": ("sol", "sol"),
-            "general": ("spark", "luna"),
-            "explore": ("spark", "luna"),
-            "verifier": ("spark", "spark"),
+            "general": ("luna", "luna"),
+            "explore": ("luna", "luna"),
+            "verifier": ("luna", "luna"),
             "reviewer": ("terra", "terra"),
             "investigator": ("terra", "terra"),
             "security-reviewer": ("terra", "terra"),
-            "scout": ("spark", "spark"),
+            "scout": ("luna", "luna"),
+            "task-orchestrator": ("sol", "sol"),
         }
         for role, (global_model, agent_core_model) in expected.items():
-            self.assertEqual(global_model, self.docs["global"]["assignments"][role]["primary_model"])
+            if role in self.docs["global"]["assignments"]:
+                self.assertEqual(global_model, self.docs["global"]["assignments"][role]["primary_model"])
             self.assertEqual(agent_core_model, self.docs["agent-core"]["assignments"][role]["primary_model"])
 
+    def test_intentional_differences_are_only_build_and_general_authority(self) -> None:
+        identifiers = {item["id"] for item in self.docs["invariants"]["intentional_differences"]}
+        self.assertEqual({"build-authority", "general-authority"}, identifiers)
+
     def test_intentional_differences_derive_canonical_values(self) -> None:
-        declarations = self.docs["invariants"]["intentional_differences"]
-        self.assertTrue(all(not ({"global", "agent-core", "classification"} & set(item)) for item in declarations))
         with tempfile.TemporaryDirectory() as temporary:
-            dotnix, templates, _, _, _ = self.make_consumer_fixture(Path(temporary))
+            dotnix, templates, _, _ = self.make_consumer_fixture(Path(temporary))
             lines, counts = audit(dotnix, templates, ROOT)
             self.assertEqual(0, counts["DIFF"])
-            self.assertIn(
-                "INTENTIONAL_DIFFERENCE id=general-primary-model role=general field=primary_model "
-                "global=spark agent-core=luna",
-                lines,
-            )
+            self.assertEqual(0, counts["MISSING"])
+            self.assertTrue(any(line.startswith("INTENTIONAL_DIFFERENCE id=build-authority ") for line in lines))
+            self.assertTrue(any(line.startswith("INTENTIONAL_DIFFERENCE id=general-authority ") for line in lines))
+            self.assertNotIn("INTENTIONAL_DIFFERENCE id=general-primary-model", "\n".join(lines))
 
-    def test_task_orchestrator_global_absence_is_counted_once(self) -> None:
+    def test_task_orchestrator_global_absence_is_intentional(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            dotnix, templates, _, _, _ = self.make_consumer_fixture(Path(temporary))
+            dotnix, templates, _, _ = self.make_consumer_fixture(Path(temporary))
             lines, _ = audit(dotnix, templates, ROOT)
             differences = [
                 line
                 for line in lines
                 if line.startswith("INTENTIONAL_DIFFERENCE") and "role=task-orchestrator" in line
             ]
-            self.assertEqual(
-                ["INTENTIONAL_DIFFERENCE profile=global role=task-orchestrator expected=absent"],
-                differences,
-            )
+            self.assertIn("INTENTIONAL_DIFFERENCE profile=global role=task-orchestrator expected=absent", differences)
 
-    def test_matching_primary_and_fallback_modes_pass(self) -> None:
+    def test_matching_primary_models_and_modes_pass(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            dotnix, templates, _, _, _ = self.make_consumer_fixture(Path(temporary))
+            dotnix, templates, dotnix_agents, templates_agents = self.make_consumer_fixture(Path(temporary))
             lines, counts = audit(dotnix, templates, ROOT)
             self.assertEqual(0, counts["DIFF"])
-            self.assertIn("PASS profile=global role=build mode=primary", lines)
-            self.assertIn("PASS profile=global role=general fallback_agent=general-fallback mode=subagent", lines)
+            self.assertEqual(0, counts["MISSING"])
+            self.assertIn(
+                "PASS profile=global role=build primary_model=openai/gpt-5.6-sol",
+                lines,
+            )
+            self.assertIn(
+                "PASS profile=agent-core role=plan mode=primary",
+                lines,
+            )
+            self.assertIn("PASS profile=global fallback_agents=absent", lines)
+            self.assertIn("PASS profile=agent-core fallback_agents=absent", lines)
+            self.assertIn("PASS profile=agent-core model_fallback_policy=absent", lines)
+            self.assertEqual(0, len(list(dotnix_agents.glob("*-fallback.md"))))
+            self.assertEqual(0, len(list(templates_agents.glob("*-fallback.md"))))
 
-    def test_role_mode_mismatch_is_unexpected_drift(self) -> None:
+    def test_wrong_primary_model_is_diff(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            dotnix, templates, dotnix_agents, _, _ = self.make_consumer_fixture(Path(temporary))
-            general_path = dotnix_agents / "general.md"
-            general_path.write_text(
-                general_path.read_text(encoding="utf-8").replace("mode: subagent", "mode: primary"),
+            dotnix, templates, _, _ = self.make_consumer_fixture(Path(temporary))
+            plan_path = dotnix / "config.d/opencode/agents/plan.md"
+            plan_path.write_text(
+                plan_path.read_text(encoding="utf-8").replace("openai/gpt-5.6-sol", "openai/wrong"),
                 encoding="utf-8",
             )
             lines, counts = audit(dotnix, templates, ROOT)
             self.assertEqual(1, counts["DIFF"])
-            self.assertTrue(
-                any(
-                    "DIFF UNEXPECTED_DRIFT profile=global role=general mode='primary' expected='subagent'" in line
-                    for line in lines
-                )
-            )
+            self.assertTrue(any("DIFF UNEXPECTED_DRIFT profile=global role=plan primary_model" in line for line in lines))
 
-    def test_fallback_mode_mismatch_is_unexpected_drift(self) -> None:
+    def test_wrong_primary_mode_is_diff(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            dotnix, templates, dotnix_agents, _, _ = self.make_consumer_fixture(Path(temporary))
-            fallback_path = dotnix_agents / "general-fallback.md"
-            fallback_path.write_text(
-                fallback_path.read_text(encoding="utf-8").replace("mode: subagent", "mode: primary"),
+            dotnix, templates, dotnix_agents, _ = self.make_consumer_fixture(Path(temporary))
+            build_path = dotnix_agents / "build.md"
+            build_path.write_text(
+                build_path.read_text(encoding="utf-8").replace("mode: primary", "mode: subagent"),
                 encoding="utf-8",
             )
             lines, counts = audit(dotnix, templates, ROOT)
             self.assertEqual(1, counts["DIFF"])
-            self.assertTrue(
-                any(
-                    "DIFF UNEXPECTED_DRIFT profile=global role=general fallback_agent=general-fallback "
-                    "mode='primary' expected='subagent'" in line
-                    for line in lines
-                )
-            )
+            self.assertTrue(any("DIFF UNEXPECTED_DRIFT profile=global role=build mode='subagent' expected='primary'" in line for line in lines))
 
-    def test_agent_core_only_fallback_in_global_is_unexpected_drift(self) -> None:
+    def test_primary_fallback_residue_any_profile_is_diff(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            dotnix, templates, dotnix_agents, _, _ = self.make_consumer_fixture(Path(temporary))
-            (dotnix_agents / "task-orchestrator-fallback.md").write_text(
-                "---\nmode: subagent\nmodel: openai/gpt-5.6-sol\n---\n", encoding="utf-8"
+            dotnix, templates, dotnix_agents, templates_agents = self.make_consumer_fixture(Path(temporary))
+            (dotnix_agents / "foo-fallback.md").write_text(
+                "---\nmode: subagent\nmodel: openai/gpt-5.6-sol\n---\n",
+                encoding="utf-8",
             )
+            (templates_agents / "foo-fallback.md").write_text(
+                "---\nmode: subagent\nmodel: openai/gpt-5.6-luna\n---\n",
+                encoding="utf-8",
+            )
+            _, counts = audit(dotnix, templates, ROOT)
+            self.assertEqual(2, counts["DIFF"])
+
+    def test_agent_core_model_fallback_policy_is_diff(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            dotnix, templates, _, _ = self.make_consumer_fixture(Path(temporary))
+            binding_path = templates / "components/agent-core/.automation/model-fallback.toml"
+            binding_path.parent.mkdir(parents=True)
+            binding_path.write_text("version = 1\n", encoding="utf-8")
             lines, counts = audit(dotnix, templates, ROOT)
             self.assertEqual(1, counts["DIFF"])
-            self.assertIn(
-                "DIFF UNEXPECTED_DRIFT profile=global role=task-orchestrator "
-                "agent=task-orchestrator-fallback expected=absent",
-                lines,
-            )
+            self.assertIn("DIFF UNEXPECTED_DRIFT profile=agent-core model_fallback_policy=model-fallback.toml expected=absent", lines)
 
-    def test_agent_core_only_primary_in_global_is_unexpected_drift(self) -> None:
+    def test_missing_primary_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            dotnix, templates, dotnix_agents, _, _ = self.make_consumer_fixture(Path(temporary))
-            (dotnix_agents / "task-orchestrator.md").write_text(
-                "---\nmode: subagent\nmodel: openai/gpt-5.3-codex-spark\n---\n", encoding="utf-8"
-            )
-            lines, counts = audit(dotnix, templates, ROOT)
-            self.assertEqual(1, counts["DIFF"])
-            self.assertIn(
-                "DIFF UNEXPECTED_DRIFT profile=global role=task-orchestrator "
-                "agent=task-orchestrator expected=absent",
-                lines,
-            )
-
-    def test_audit_reports_missing_common_plan_fallback(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            dotnix, templates, _, templates_agents, binding_path = self.make_consumer_fixture(Path(temporary))
-            (templates_agents / "plan-fallback.md").unlink()
-            self.remove_fallback_binding(binding_path, "plan")
-            lines, counts = audit(dotnix, templates, ROOT)
+            dotnix, templates, dotnix_agents, templates_agents = self.make_consumer_fixture(Path(temporary))
+            (dotnix_agents / "build.md").unlink()
+            (templates_agents / "build.md").unlink()
+            _, counts = audit(dotnix, templates, ROOT)
             self.assertEqual(2, counts["MISSING"])
-            self.assertEqual(0, counts["DIFF"])
-            self.assertIn(
-                "PASS profile=global role=plan fallback_agent=plan-fallback model=openai/gpt-5.3-codex-spark",
-                lines,
+
+    def test_model_availability_contract_is_accepted(self) -> None:
+        availability = self.docs["model-availability"]["policy"]
+        expected = {
+            "model_substitution": "forbidden",
+            "alternate_model_retry": "forbidden",
+            "unavailable_result": "BLOCKED",
+            "report_exact_provider_model_failure": True,
+            "fallback_agents": "forbidden",
+        }
+        self.assertEqual(expected, availability)
+
+    def test_model_availability_contract_rejects_invalid_fields(self) -> None:
+        variants = [
+            ("model_substitution", "allowed"),
+            ("alternate_model_retry", "allowed"),
+            ("unavailable_result", "allowed"),
+            ("report_exact_provider_model_failure", False),
+            ("fallback_agents", True),
+        ]
+        for field, value in variants:
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                shutil.copytree(ROOT / "policy", root / "policy")
+                shutil.copytree(ROOT / "profiles", root / "profiles")
+                availability_path = root / "policy/model-availability.toml"
+                contents = availability_path.read_text(encoding="utf-8")
+                marker = f"{field} = "
+                lines = []
+                for line in contents.splitlines():
+                    if line.startswith(marker):
+                        if isinstance(value, bool):
+                            rendered = "true" if value else "false"
+                        else:
+                            rendered = f"\"{value}\""
+                        lines.append(f"{marker}{rendered}")
+                    else:
+                        lines.append(line)
+                availability_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                errors = validate_policy(root)
+                self.assertTrue(any(field in error for error in errors))
+
+    def test_role_assignment_rejects_substitution_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / "policy", root / "policy")
+            shutil.copytree(ROOT / "profiles", root / "profiles")
+            profile_path = root / "profiles/global.toml"
+            contents = profile_path.read_text(encoding="utf-8").replace(
+                'primary_model = "sol"\nauthority = "implementation-orchestrator"',
+                'primary_model = "sol"\nauthority = "implementation-orchestrator"\nfallback_model = "luna"',
+                1,
             )
-            self.assertTrue(
-                any("MISSING UNEXPECTED_DRIFT" in line and "fallback_agent=plan-fallback" in line for line in lines)
-            )
-            self.assertTrue(
-                any("MISSING UNEXPECTED_DRIFT" in line and "fallback_binding=model-fallback.toml" in line for line in lines)
-            )
+            profile_path.write_text(contents, encoding="utf-8")
+            errors = validate_policy(root)
+            self.assertTrue(any("unsupported fields ['fallback_model']" in error for error in errors))
+
+    def test_no_provider_model_literals_outside_models(self) -> None:
+        self.assertEqual([], self.parse_errors)
+
+        def has_model_literal(node) -> bool:
+            if isinstance(node, dict):
+                return any(has_model_literal(value) for value in node.values())
+            if isinstance(node, list):
+                return any(has_model_literal(value) for value in node)
+            return isinstance(node, str) and node.startswith("openai/")
+
+        for name, document in self.docs.items():
+            if name == "models":
+                continue
+            self.assertFalse(has_model_literal(document), f"{name} contains provider model literals")
 
 
 if __name__ == "__main__":

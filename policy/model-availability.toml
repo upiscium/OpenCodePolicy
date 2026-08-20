@@ -1,0 +1,8 @@
+schema_version = 1
+
+[policy]
+model_substitution = "forbidden"
+alternate_model_retry = "forbidden"
+unavailable_result = "BLOCKED"
+report_exact_provider_model_failure = true
+fallback_agents = "forbidden"

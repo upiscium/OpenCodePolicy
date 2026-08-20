@@ -13,32 +13,37 @@ statement = "dotnix and Templates remain implementation owners of their respecti
 [[invariants]]
 id = "model-alias-only"
 scope = "common"
-statement = "Role and fallback contracts reference canonical model aliases rather than provider model literals."
+statement = "Role assignments reference canonical model aliases rather than provider model literals."
 
 [[invariants]]
-id = "fallback-preserves-role"
+id = "single-configured-model"
 scope = "common"
-statement = "Fallback changes only model identity and must preserve role authority and bounded objective."
+statement = "Each applicable role has exactly one configured model."
 
 [[invariants]]
-id = "fallback-preserves-mode"
+id = "model-substitution-forbidden"
 scope = "common"
-statement = "A fallback agent has the same primary or subagent mode contract as its canonical role."
+statement = "Availability, quota, rate-limit, and usage-limit failures never change the configured role or model identity."
 
 [[invariants]]
-id = "fallback-classified-only"
+id = "alternate-model-retry-forbidden"
 scope = "common"
-statement = "Fallback is limited to classified quota, usage, rate-limit, or HTTP 429 failures."
+statement = "A bounded objective is never retried under another model."
 
 [[invariants]]
-id = "non-fallback-precedence"
+id = "availability-fail-closed"
 scope = "common"
-statement = "Authentication, authorization, permission, context, validation, tool, and safety failures never trigger fallback."
+statement = "If the configured model cannot execute the objective, the role returns BLOCKED."
 
 [[invariants]]
-id = "no-unconfigured-substitution"
+id = "exact-model-failure-reporting"
 scope = "common"
-statement = "An unavailable model may only be replaced through an explicitly configured fallback."
+statement = "Availability failure reports the exact configured provider and model failure."
+
+[[invariants]]
+id = "fallback-agents-forbidden"
+scope = "common"
+statement = "Neither profile includes model-substitution fallback agents."
 
 [[invariants]]
 id = "consumer-audit-read-only"
@@ -54,13 +59,3 @@ field = "authority"
 id = "general-authority"
 role = "general"
 field = "authority"
-
-[[intentional_differences]]
-id = "general-primary-model"
-role = "general"
-field = "primary_model"
-
-[[intentional_differences]]
-id = "explore-primary-model"
-role = "explore"
-field = "primary_model"

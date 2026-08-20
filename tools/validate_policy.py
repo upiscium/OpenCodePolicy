@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY_FILES = {
     "models": Path("policy/models.toml"),
     "roles": Path("policy/roles.toml"),
-    "fallback": Path("policy/fallback.toml"),
+    "model-availability": Path("policy/model-availability.toml"),
     "invariants": Path("policy/invariants.toml"),
     "global": Path("profiles/global.toml"),
     "agent-core": Path("profiles/agent-core.toml"),
@@ -140,6 +140,12 @@ def validate_policy(root: Path = ROOT) -> list[str]:
                 continue
             if profile_id not in roles[role_id].get("profiles", []):
                 errors.append(f"profiles/{profile_id}.toml: role {role_id!r} is not applicable")
+            unknown_assignment_fields = set(assignment) - {"primary_model", "authority"}
+            if unknown_assignment_fields:
+                errors.append(
+                    f"profiles/{profile_id}.toml assignments.{role_id}: unsupported fields "
+                    f"{sorted(unknown_assignment_fields)}"
+                )
             if assignment.get("primary_model") not in models:
                 errors.append(
                     f"profiles/{profile_id}.toml assignments.{role_id}: unknown model "
@@ -160,82 +166,22 @@ def validate_policy(root: Path = ROOT) -> list[str]:
         if extra:
             errors.append(f"profiles/{profile_id}.toml: inapplicable role assignments {sorted(extra)}")
 
-    fallback_doc = docs["fallback"]
-    fallback_policy = fallback_doc.get("policy", {})
-    classification = fallback_doc.get("failure_classification", {})
-    if not isinstance(fallback_policy, dict):
-        errors.append("fallback.policy: must be a table")
-        fallback_policy = {}
-    if not isinstance(classification, dict):
-        errors.append("fallback.failure_classification: must be a table")
-        classification = {}
-    for field in ("retryable_http_status", "retryable_markers", "non_fallback_markers"):
-        if not isinstance(classification.get(field), list) or not classification[field]:
-            errors.append(f"fallback.failure_classification.{field}: non-empty list is required")
-    if fallback_policy.get("unclassified_failure") != "no-fallback":
-        errors.append("fallback.policy: unclassified_failure must be 'no-fallback'")
-    if fallback_policy.get("require_cross_quota_family") is not True:
-        errors.append("fallback.policy: require_cross_quota_family must be true")
-    if fallback_policy.get("retry_same_objective") is not True:
-        errors.append("fallback.policy: retry_same_objective must be true")
-
-    fallbacks = fallback_doc.get("fallbacks", {})
-    if not isinstance(fallbacks, dict):
-        errors.append("policy/fallback.toml: fallbacks must be a table")
-        fallbacks = {}
-    for fallback_id, fallback in fallbacks.items():
-        if not isinstance(fallback, dict):
-            errors.append(f"fallbacks.{fallback_id}: fallback definition must be a table")
-            continue
-        role_id = fallback.get("role")
-        applicable = fallback.get("profiles")
-        if role_id not in roles:
-            errors.append(f"fallbacks.{fallback_id}: unknown role reference {role_id!r}")
-            continue
-        if fallback_id != role_id:
-            errors.append(f"fallbacks.{fallback_id}: semantic id must match role {role_id!r}")
-        if not isinstance(applicable, list) or not applicable:
-            errors.append(f"fallbacks.{fallback_id}: profiles are required")
-            applicable = []
-        if set(applicable) - profiles:
-            errors.append(f"fallbacks.{fallback_id}: unknown profile reference")
-        if set(applicable) != set(roles[role_id].get("profiles", [])):
-            errors.append(f"fallbacks.{fallback_id}: profile applicability contradicts role")
-        fallback_agent = fallback.get("fallback_agent")
-        if fallback_agent == role_id or not isinstance(fallback_agent, str):
-            errors.append(f"fallbacks.{fallback_id}: invalid or self-referencing fallback_agent")
-        if fallback.get("max_retries") != 1:
-            errors.append(f"fallbacks.{fallback_id}: max_retries must be 1")
-        targets = fallback.get("target_models", {})
-        automatic = fallback.get("automatic", {})
-        if not isinstance(targets, dict):
-            errors.append(f"fallbacks.{fallback_id}: target_models must be a table")
-            targets = {}
-        if not isinstance(automatic, dict):
-            errors.append(f"fallbacks.{fallback_id}: automatic must be a table")
-            automatic = {}
-        if set(targets) != set(applicable) or set(automatic) != set(applicable):
-            errors.append(f"fallbacks.{fallback_id}: target_models/automatic profiles must match applicability")
-        for profile_id in applicable:
-            target = targets.get(profile_id)
-            primary = assignments.get(profile_id, {}).get(role_id, {}).get("primary_model")
-            if target not in models:
-                errors.append(f"fallbacks.{fallback_id}.{profile_id}: unknown model {target!r}")
-                continue
-            if primary == target:
-                errors.append(f"fallbacks.{fallback_id}.{profile_id}: fallback self-reference")
-            if (
-                fallback_policy.get("require_cross_quota_family")
-                and primary in models
-                and models[primary].get("quota_family") == models[target].get("quota_family")
-            ):
-                errors.append(f"fallbacks.{fallback_id}.{profile_id}: fallback remains in quota family")
-            if not isinstance(automatic.get(profile_id), bool):
-                errors.append(f"fallbacks.{fallback_id}.{profile_id}: automatic must be boolean")
-    valid_fallback_ids = {fallback_id for fallback_id, fallback in fallbacks.items() if isinstance(fallback, dict)}
-    missing_fallbacks = set(roles) - valid_fallback_ids
-    if missing_fallbacks:
-        errors.append(f"policy/fallback.toml: roles without fallback contracts {sorted(missing_fallbacks)}")
+    availability = docs["model-availability"].get("policy", {})
+    if not isinstance(availability, dict):
+        errors.append("model-availability.policy: must be a table")
+        availability = {}
+    required_availability = {
+        "model_substitution": "forbidden",
+        "alternate_model_retry": "forbidden",
+        "unavailable_result": "BLOCKED",
+        "report_exact_provider_model_failure": True,
+        "fallback_agents": "forbidden",
+    }
+    for field, expected in required_availability.items():
+        if availability.get(field) != expected:
+            errors.append(
+                f"model-availability.policy.{field}: must be {expected!r}"
+            )
 
     semantic_ids: dict[str, str] = {}
     difference_targets: set[tuple[str, str]] = set()
