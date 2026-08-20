@@ -265,6 +265,7 @@ class PolicyContractTests(unittest.TestCase):
             ("alternate_model_retry", "allowed"),
             ("unavailable_result", "allowed"),
             ("report_exact_provider_model_failure", False),
+            ("report_exact_provider_model_failure", 1),
             ("fallback_agents", True),
         ]
         for field, value in variants:
@@ -280,14 +281,85 @@ class PolicyContractTests(unittest.TestCase):
                     if line.startswith(marker):
                         if isinstance(value, bool):
                             rendered = "true" if value else "false"
-                        else:
+                        elif isinstance(value, str):
                             rendered = f"\"{value}\""
+                        else:
+                            rendered = str(value)
                         lines.append(f"{marker}{rendered}")
                     else:
                         lines.append(line)
                 availability_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
                 errors = validate_policy(root)
                 self.assertTrue(any(field in error for error in errors))
+
+    def test_model_availability_contract_rejects_unknown_policy_field(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / "policy", root / "policy")
+            shutil.copytree(ROOT / "profiles", root / "profiles")
+            availability_path = root / "policy/model-availability.toml"
+            contents = availability_path.read_text(encoding="utf-8").replace(
+                'fallback_agents = "forbidden"',
+                'fallback_agents = "forbidden"\nemergency_model_substitution = "allowed"',
+            )
+            availability_path.write_text(contents, encoding="utf-8")
+            errors = validate_policy(root)
+            self.assertIn(
+                "model-availability.policy: unknown fields ['emergency_model_substitution']",
+                errors,
+            )
+
+    def test_model_availability_contract_rejects_unknown_top_level_table(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / "policy", root / "policy")
+            shutil.copytree(ROOT / "profiles", root / "profiles")
+            availability_path = root / "policy/model-availability.toml"
+            contents = availability_path.read_text(encoding="utf-8")
+            availability_path.write_text(
+                contents + "\n[legacy_fallback]\nenabled = true\n",
+                encoding="utf-8",
+            )
+            errors = validate_policy(root)
+            self.assertIn(
+                "policy/model-availability.toml: unknown top-level keys ['legacy_fallback']",
+                errors,
+            )
+
+    def test_model_availability_contract_rejects_missing_required_field(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / "policy", root / "policy")
+            shutil.copytree(ROOT / "profiles", root / "profiles")
+            availability_path = root / "policy/model-availability.toml"
+            contents = availability_path.read_text(encoding="utf-8").replace(
+                'fallback_agents = "forbidden"\n',
+                "",
+            )
+            availability_path.write_text(contents, encoding="utf-8")
+            errors = validate_policy(root)
+            self.assertIn(
+                "model-availability.policy.fallback_agents: required field is missing",
+                errors,
+            )
+
+    def test_model_availability_contract_rejects_non_integer_schema_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / "policy", root / "policy")
+            shutil.copytree(ROOT / "profiles", root / "profiles")
+            availability_path = root / "policy/model-availability.toml"
+            contents = availability_path.read_text(encoding="utf-8").replace(
+                "schema_version = 1",
+                "schema_version = true",
+                1,
+            )
+            availability_path.write_text(contents, encoding="utf-8")
+            errors = validate_policy(root)
+            self.assertIn(
+                "policy/model-availability.toml: schema_version must be 1",
+                errors,
+            )
 
     def test_role_assignment_rejects_substitution_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

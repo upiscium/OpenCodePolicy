@@ -55,7 +55,7 @@ def validate_policy(root: Path = ROOT) -> list[str]:
         return errors
 
     for name, doc in docs.items():
-        if doc.get("schema_version") != 1:
+        if type(doc.get("schema_version")) is not int or doc["schema_version"] != 1:
             errors.append(f"{POLICY_FILES[name]}: schema_version must be 1")
 
     models = docs["models"].get("models", {})
@@ -166,7 +166,15 @@ def validate_policy(root: Path = ROOT) -> list[str]:
         if extra:
             errors.append(f"profiles/{profile_id}.toml: inapplicable role assignments {sorted(extra)}")
 
-    availability = docs["model-availability"].get("policy", {})
+    availability_doc = docs["model-availability"]
+    unknown_availability_sections = set(availability_doc) - {"schema_version", "policy"}
+    if unknown_availability_sections:
+        errors.append(
+            "policy/model-availability.toml: unknown top-level keys "
+            f"{sorted(unknown_availability_sections)}"
+        )
+
+    availability = availability_doc.get("policy", {})
     if not isinstance(availability, dict):
         errors.append("model-availability.policy: must be a table")
         availability = {}
@@ -177,8 +185,16 @@ def validate_policy(root: Path = ROOT) -> list[str]:
         "report_exact_provider_model_failure": True,
         "fallback_agents": "forbidden",
     }
+    unknown_availability_fields = set(availability) - set(required_availability)
+    if unknown_availability_fields:
+        errors.append(
+            "model-availability.policy: unknown fields "
+            f"{sorted(unknown_availability_fields)}"
+        )
     for field, expected in required_availability.items():
-        if availability.get(field) != expected:
+        if field not in availability:
+            errors.append(f"model-availability.policy.{field}: required field is missing")
+        elif type(availability[field]) is not type(expected) or availability[field] != expected:
             errors.append(
                 f"model-availability.policy.{field}: must be {expected!r}"
             )
