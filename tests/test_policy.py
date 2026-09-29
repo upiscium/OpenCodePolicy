@@ -702,7 +702,7 @@ class PolicyContractTests(unittest.TestCase):
         self.assertEqual({"sol", "terra", "luna"}, set(models.keys()))
         self.assertEqual(
             {
-                "sol": "openai/gpt-5.6-sol",
+                "sol": "openai/gpt-6-sol",
                 "terra": "openai/gpt-5.6-terra",
                 "luna": "openai/gpt-6-luna",
             },
@@ -715,7 +715,7 @@ class PolicyContractTests(unittest.TestCase):
         self.assertNotIn("openai/gpt-5.3-codex-sol", model_ids)
         self.assertFalse(any("spark" in model_id for model_id in model_ids))
         self.assertEqual({"gpt56", "gpt6"}, set(self.docs["models"]["quota_families"]))
-        self.assertEqual("gpt56", models["sol"]["quota_family"])
+        self.assertEqual("gpt6", models["sol"]["quota_family"])
         self.assertEqual("gpt56", models["terra"]["quota_family"])
         self.assertEqual("gpt6", models["luna"]["quota_family"])
         self.assertFalse((ROOT / "policy/fallback.toml").exists())
@@ -899,7 +899,7 @@ class PolicyContractTests(unittest.TestCase):
             self.assertEqual(0, counts["DIFF"])
             self.assertEqual(0, counts["MISSING"])
             self.assertIn(
-                "PASS profile=global role=build primary_model=openai/gpt-5.6-sol",
+                "PASS profile=global role=build primary_model=openai/gpt-6-sol",
                 lines,
             )
             self.assertIn(
@@ -940,7 +940,7 @@ class PolicyContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             dotnix, templates, dotnix_agents, templates_agents = self.make_consumer_fixture(Path(temporary))
             (dotnix_agents / "foo-fallback.md").write_text(
-                "---\nmode: subagent\nmodel: openai/gpt-5.6-sol\n---\n",
+                "---\nmode: subagent\nmodel: openai/gpt-6-sol\n---\n",
                 encoding="utf-8",
             )
             (templates_agents / "foo-fallback.md").write_text(

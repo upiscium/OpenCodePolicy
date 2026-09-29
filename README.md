@@ -76,7 +76,7 @@ The same role identity does not imply identical prompts, permissions, or authori
 
 Only three model aliases are canonical:
 
-- `sol` = `openai/gpt-5.6-sol`
+- `sol` = `openai/gpt-6-sol`
 - `terra` = `openai/gpt-5.6-terra`
 - `luna` = `openai/gpt-6-luna`
 
