@@ -704,7 +704,7 @@ class PolicyContractTests(unittest.TestCase):
             {
                 "sol": "openai/gpt-5.6-sol",
                 "terra": "openai/gpt-5.6-terra",
-                "luna": "openai/gpt-5.6-luna",
+                "luna": "openai/gpt-6-luna",
             },
             {alias: model["id"] for alias, model in models.items()},
         )
@@ -714,8 +714,10 @@ class PolicyContractTests(unittest.TestCase):
         self.assertNotIn("openai/gpt-5.3-codex-terra", model_ids)
         self.assertNotIn("openai/gpt-5.3-codex-sol", model_ids)
         self.assertFalse(any("spark" in model_id for model_id in model_ids))
-        self.assertEqual({"gpt56"}, set(self.docs["models"]["quota_families"]))
-        self.assertTrue(all(model["quota_family"] == "gpt56" for model in models.values()))
+        self.assertEqual({"gpt56", "gpt6"}, set(self.docs["models"]["quota_families"]))
+        self.assertEqual("gpt56", models["sol"]["quota_family"])
+        self.assertEqual("gpt56", models["terra"]["quota_family"])
+        self.assertEqual("gpt6", models["luna"]["quota_family"])
         self.assertFalse((ROOT / "policy/fallback.toml").exists())
 
     def test_fixed_model_invariants_replace_routing_invariants(self) -> None:
@@ -915,7 +917,7 @@ class PolicyContractTests(unittest.TestCase):
             dotnix, templates, _, _ = self.make_consumer_fixture(Path(temporary))
             plan_path = dotnix / "config.d/opencode/agents/plan.md"
             plan_path.write_text(
-                plan_path.read_text(encoding="utf-8").replace("openai/gpt-5.6-luna", "openai/wrong"),
+                plan_path.read_text(encoding="utf-8").replace("openai/gpt-6-luna", "openai/wrong"),
                 encoding="utf-8",
             )
             lines, counts = audit(dotnix, templates, ROOT)
@@ -942,7 +944,7 @@ class PolicyContractTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (templates_agents / "foo-fallback.md").write_text(
-                "---\nmode: subagent\nmodel: openai/gpt-5.6-luna\n---\n",
+                "---\nmode: subagent\nmodel: openai/gpt-6-luna\n---\n",
                 encoding="utf-8",
             )
             _, counts = audit(dotnix, templates, ROOT)
