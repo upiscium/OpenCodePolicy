@@ -1146,7 +1146,7 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
             manifest = consumer / "config.d/opencode/local-workers.toml"
             manifest.write_text(
                 manifest.read_text().replace('provider = "local-quality"', 'provider = "openai"').replace(
-                    'model = "quality-model"', 'model = "gpt-5.6-sol"'
+                    'model = "quality-model"', 'model = "gpt-6-sol"'
                 ), encoding="utf-8"
             )
             self.assert_local_invalid(consumer, "canonical_model")
@@ -1278,7 +1278,7 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
         with tempfile.TemporaryDirectory() as temporary:
             consumer = self.make_consumer(Path(temporary), "global")
             plan = consumer / "config.d/opencode/agents/plan.md"
-            plan.write_text(plan.read_text().replace("openai/gpt-5.6-luna", "openai/wrong"), encoding="utf-8")
+            plan.write_text(plan.read_text().replace("openai/gpt-6-luna", "openai/wrong"), encoding="utf-8")
             lines, counts = audit_profile("global", consumer, self.documents)
             self.assertEqual(1, counts["DIFF"])
             self.assertTrue(any("role=plan primary_model" in line for line in lines))
@@ -1296,7 +1296,7 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
         with tempfile.TemporaryDirectory() as temporary:
             consumer = self.make_consumer(Path(temporary), "global")
             (consumer / "config.d/opencode/agents/plan-fallback.md").write_text(
-                "---\nmode: subagent\nmodel: openai/gpt-5.6-sol\n---\n", encoding="utf-8"
+                "---\nmode: subagent\nmodel: openai/gpt-6-sol\n---\n", encoding="utf-8"
             )
             lines, counts = audit_profile("global", consumer, self.documents)
             self.assertEqual(1, counts["DIFF"])
@@ -1306,7 +1306,7 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
         with tempfile.TemporaryDirectory() as temporary:
             consumer = self.make_consumer(Path(temporary), "agent-core")
             (consumer / "components/agent-core/.opencode/agents/verifier-fallback.md").write_text(
-                "---\nmode: subagent\nmodel: openai/gpt-5.6-sol\n---\n", encoding="utf-8"
+                "---\nmode: subagent\nmodel: openai/gpt-6-sol\n---\n", encoding="utf-8"
             )
             lines, counts = audit_profile("agent-core", consumer, self.documents)
             self.assertEqual(1, counts["DIFF"])
@@ -1328,7 +1328,7 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
         with tempfile.TemporaryDirectory() as temporary:
             consumer = self.make_consumer(Path(temporary), "global")
             (consumer / "config.d/opencode/agents/foo-fallback.md").write_text(
-                "---\nmode: subagent\nmodel: openai/gpt-5.6-sol\n---\n", encoding="utf-8"
+                "---\nmode: subagent\nmodel: openai/gpt-6-sol\n---\n", encoding="utf-8"
             )
             lines, counts = audit_profile("global", consumer, self.documents)
             self.assertEqual(1, counts["DIFF"])
@@ -1380,7 +1380,7 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
         with tempfile.TemporaryDirectory() as temporary:
             consumer = self.make_consumer(Path(temporary), "global")
             (consumer / "config.d/opencode/agents/foo-fallback.md").write_text(
-                "---\nmode: subagent\nmodel: openai/gpt-5.6-sol\n---\n", encoding="utf-8"
+                "---\nmode: subagent\nmodel: openai/gpt-6-sol\n---\n", encoding="utf-8"
             )
             result = self.run_cli("audit-consumer", "--profile", "global", "--consumer", str(consumer), "--strict")
             self.assertEqual(1, result.returncode)

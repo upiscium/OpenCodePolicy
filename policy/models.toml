@@ -3,14 +3,17 @@ schema_version = 1
 [quota_families.gpt56]
 description = "Descriptive quota-family metadata for GPT-5.6 model identities; it is not routing authority."
 
+[quota_families.gpt6]
+description = "Descriptive quota-family metadata for GPT-6 model identities; it is not routing authority."
+
 [models.sol]
-id = "openai/gpt-5.6-sol"
-quota_family = "gpt56"
+id = "openai/gpt-6-sol"
+quota_family = "gpt6"
 
 [models.terra]
 id = "openai/gpt-5.6-terra"
 quota_family = "gpt56"
 
 [models.luna]
-id = "openai/gpt-5.6-luna"
-quota_family = "gpt56"
+id = "openai/gpt-6-luna"
+quota_family = "gpt6"

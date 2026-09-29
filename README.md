@@ -76,9 +76,9 @@ The same role identity does not imply identical prompts, permissions, or authori
 
 Only three model aliases are canonical:
 
-- `sol` = `openai/gpt-5.6-sol`
+- `sol` = `openai/gpt-6-sol`
 - `terra` = `openai/gpt-5.6-terra`
-- `luna` = `openai/gpt-5.6-luna`
+- `luna` = `openai/gpt-6-luna`
 
 Provider IDs appear only in `policy/models.toml`. Quota-family metadata is descriptive and is not routing authority. Spark, substitute models, and local models are not part of the canonical policy.
 

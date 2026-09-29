@@ -139,7 +139,7 @@ class PackagedGlobalPathTests(unittest.TestCase):
             lines, counts = audit_profile("global", consumer, self.documents)
             self.assertEqual(0, counts["DIFF"])
             self.assertEqual(0, counts["MISSING"])
-            self.assertIn("PASS profile=global role=build primary_model=openai/gpt-5.6-sol", lines)
+            self.assertIn("PASS profile=global role=build primary_model=openai/gpt-6-sol", lines)
 
     def test_packaged_path_precedes_legacy_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
