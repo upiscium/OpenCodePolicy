@@ -23,6 +23,7 @@ from validate_policy import load_policy, validate_policy  # noqa: E402
 PERMISSION_CLASSES = (
     "safe-read-only",
     "local-filesystem-delete",
+    "confined-task-resource-cleanup",
     "repository-history-destruction",
     "remote-destructive-operation",
     "privilege-escalation",
@@ -57,6 +58,9 @@ LEAF_BASH_PERMISSIONS = {
     "sudo*": "deny",
     "nix store delete*": "deny",
 }
+CONFINED_CLEANUP_CLASS = "confined-task-resource-cleanup"
+CONFINED_CLEANUP_TOOL = "task_cleanup"
+CONFINED_CLEANUP_INPUT = "registered-task-resource"
 
 
 class PolicyContractTests(unittest.TestCase):
@@ -100,14 +104,23 @@ class PolicyContractTests(unittest.TestCase):
                     f"    {json.dumps(pattern)}: {action}"
                     for pattern, action in role_permissions.items()
                 )
+                cleanup_action = "allow" if role in parent_roles else "deny"
                 (directory / f"{role}.md").write_text(
                     f"---\nmode: {mode}\nmodel: {model}\n"
-                    f"permission:\n  bash:\n{permission_lines}\n---\n",
+                    f"permission:\n  bash:\n{permission_lines}\n"
+                    f"  {CONFINED_CLEANUP_TOOL}:\n    \"*\": {cleanup_action}\n---\n",
                     encoding="utf-8",
                 )
 
             bundle.joinpath("opencode.json").write_text(
-                json.dumps({"permission": {"bash": PARENT_BASH_PERMISSIONS}}),
+                json.dumps(
+                    {
+                        "permission": {
+                            "bash": PARENT_BASH_PERMISSIONS,
+                            CONFINED_CLEANUP_TOOL: {"*": "allow"},
+                        }
+                    }
+                ),
                 encoding="utf-8",
             )
             source_prefix = "agents" if profile == "global" else ".opencode/agents"
@@ -151,6 +164,17 @@ class PolicyContractTests(unittest.TestCase):
                             f'classes = ["{class_id}"]',
                         ]
                     )
+                if profile == "agent-core":
+                    manifest_lines.extend(
+                        [
+                            "",
+                            "[[probes]]",
+                            f'surface = "{surface_id}"',
+                            f'tool = "{CONFINED_CLEANUP_TOOL}"',
+                            f'input = "{CONFINED_CLEANUP_INPUT}"',
+                            f'classes = ["{CONFINED_CLEANUP_CLASS}"]',
+                        ]
+                    )
             bundle.joinpath("opencode-contract-permissions.toml").write_text(
                 "\n".join(manifest_lines) + "\n",
                 encoding="utf-8",
@@ -172,12 +196,13 @@ class PolicyContractTests(unittest.TestCase):
         for term in terms:
             self.assertIn(term, rendered)
 
-    def test_permission_semantics_has_exact_six_classes_and_matrices(self) -> None:
+    def test_permission_semantics_has_exact_seven_classes_and_matrices(self) -> None:
         document = self.docs["permission-semantics"]
         contract = document["contract"]
         expected_classes = [
             "safe-read-only",
             "local-filesystem-delete",
+            "confined-task-resource-cleanup",
             "repository-history-destruction",
             "remote-destructive-operation",
             "privilege-escalation",
@@ -199,14 +224,15 @@ class PolicyContractTests(unittest.TestCase):
             "BLOCKED-over-NEEDS_APPROVAL-over-none",
             contract["overlap_escalation_resolution"],
         )
-        self.assertEqual(10, len(contract["required_invariant_ids"]))
+        self.assertEqual(11, len(contract["required_invariant_ids"]))
 
         classes = document["operation_classes"]
-        self.assertEqual(6, len(classes))
+        self.assertEqual(7, len(classes))
         self.assertEqual(expected_classes, [operation["id"] for operation in classes])
         expected_matrix = {
             "safe-read-only": ("allow", "allow", "none", "none"),
             "local-filesystem-delete": ("ask", "deny", "none", "NEEDS_APPROVAL"),
+            "confined-task-resource-cleanup": ("allow", "deny", "none", "BLOCKED"),
             "repository-history-destruction": ("deny", "deny", "BLOCKED", "BLOCKED"),
             "remote-destructive-operation": ("deny", "deny", "BLOCKED", "BLOCKED"),
             "privilege-escalation": ("deny", "deny", "BLOCKED", "BLOCKED"),
@@ -253,6 +279,19 @@ class PolicyContractTests(unittest.TestCase):
         self.assertNotIn("safe-read-only", context["conditional_classes"])
         self.assertIn("safe-read-only", context["mandatory_classes"])
 
+        agent_core_context, errors = _permission_contract_context(
+            "agent-core", self.docs
+        )
+        self.assertEqual([], errors)
+        assert agent_core_context is not None
+        self.assertIn(CONFINED_CLEANUP_CLASS, agent_core_context["classes"])
+        self.assertIn(CONFINED_CLEANUP_CLASS, agent_core_context["mandatory_classes"])
+        self.assertIn(
+            CONFINED_CLEANUP_CLASS,
+            agent_core_context["guarded_non_shell_classes"],
+        )
+        self.assertNotIn(CONFINED_CLEANUP_CLASS, context["classes"])
+
     def test_permission_policy_has_no_concrete_command_literals(self) -> None:
         policy_text = (ROOT / "policy/permission-semantics.toml").read_text(
             encoding="utf-8"
@@ -276,6 +315,35 @@ class PolicyContractTests(unittest.TestCase):
         self.assertEqual("NEEDS_APPROVAL", operation["leaf_escalation"])
         self.assertEqual("none", operation["parent_escalation"])
         self.assertEqual("bounded-destructive", operation["category"])
+
+    def test_confined_task_resource_cleanup_is_guarded_parent_only(self) -> None:
+        operation = {
+            item["id"]: item
+            for item in self.docs["permission-semantics"]["operation_classes"]
+        }[CONFINED_CLEANUP_CLASS]
+        self.assertEqual("allow", operation["parent_disposition"])
+        self.assertEqual("deny", operation["leaf_disposition"])
+        self.assertEqual("none", operation["parent_escalation"])
+        self.assertEqual("BLOCKED", operation["leaf_escalation"])
+        self.assertEqual("guarded-destructive", operation["category"])
+        self.assertEqual(["agent-core"], operation["profiles"])
+        self.assertEqual("guarded-non-shell-api", operation["invocation_boundary"])
+        self.assertEqual(
+            {
+                "exact-current-task-repository-worktree-identity",
+                "canonical-registered-task-resource-target",
+                "preserve-tracked-untracked-product-work",
+                "preserve-local-only-unpublished-commits",
+                "reject-absolute-traversal-git-admin-path-escape",
+                "reject-symlink-mount-external-filesystem-escape",
+                "no-shell-expansion-substitution-authority",
+                "exclude-default-repository-branch-history-destruction",
+                "exclude-force-reset-clean-history-rewrite",
+                "immediate-pre-delete-target-revalidation",
+                "parent-only-direct-invocation",
+            },
+            set(operation["required_guards"]),
+        )
 
     def test_permission_invariants_are_anchored_to_the_contract(self) -> None:
         required = set(
@@ -852,6 +920,14 @@ class PolicyContractTests(unittest.TestCase):
                                 for line in lines
                             )
                         }
+                        if profile == "agent-core" and any(
+                            line.startswith(
+                                f"PASS profile={profile} surface={surface} "
+                            )
+                            and f"classes={CONFINED_CLEANUP_CLASS}" in line
+                            for line in lines
+                        ):
+                            observed.add(CONFINED_CLEANUP_CLASS)
                         self.assertTrue(mandatory_classes <= observed, surface)
                     self.assertTrue(
                         any(
