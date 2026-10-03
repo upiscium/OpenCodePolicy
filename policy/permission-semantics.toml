@@ -10,6 +10,7 @@ authorities = ["approval-capable-parent", "non-interactive-leaf"]
 operation_classes = [
   "safe-read-only",
   "local-filesystem-delete",
+  "confined-task-resource-cleanup",
   "repository-history-destruction",
   "remote-destructive-operation",
   "privilege-escalation",
@@ -28,6 +29,7 @@ out_of_authority = "BLOCKED"
 required_invariant_ids = [
   "bounded-safety-semantics-canonical",
   "permission-map-implementation-owned",
+  "confined-task-resource-cleanup-guarded",
   "leaf-no-direct-ask-execution-permission-mutation",
   "no-permission-bypass",
   "parent-independent-reevaluation-no-relay",
@@ -88,6 +90,29 @@ leaf_disposition = "deny"
 parent_escalation = "none"
 leaf_escalation = "NEEDS_APPROVAL"
 category = "bounded-destructive"
+
+[[operation_classes]]
+id = "confined-task-resource-cleanup"
+parent_disposition = "allow"
+leaf_disposition = "deny"
+parent_escalation = "none"
+leaf_escalation = "BLOCKED"
+category = "guarded-destructive"
+profiles = ["agent-core"]
+invocation_boundary = "guarded-non-shell-api"
+required_guards = [
+  "exact-current-task-repository-worktree-identity",
+  "canonical-registered-task-resource-target",
+  "preserve-tracked-untracked-product-work",
+  "preserve-local-only-unpublished-commits",
+  "reject-absolute-traversal-git-admin-path-escape",
+  "reject-symlink-mount-external-filesystem-escape",
+  "no-shell-expansion-substitution-authority",
+  "exclude-default-repository-branch-history-destruction",
+  "exclude-force-reset-clean-history-rewrite",
+  "immediate-pre-delete-target-revalidation",
+  "parent-only-direct-invocation",
+]
 
 [[operation_classes]]
 id = "repository-history-destruction"
