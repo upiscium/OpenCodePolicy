@@ -26,6 +26,7 @@ from validate_policy import load_policy  # noqa: E402
 PERMISSION_CLASSES = (
     "safe-read-only",
     "local-filesystem-delete",
+    "confined-task-resource-cleanup",
     "repository-history-destruction",
     "remote-destructive-operation",
     "privilege-escalation",
@@ -60,6 +61,9 @@ LEAF_BASH_PERMISSIONS = {
     "sudo*": "deny",
     "nix store delete*": "deny",
 }
+CONFINED_CLEANUP_CLASS = "confined-task-resource-cleanup"
+CONFINED_CLEANUP_TOOL = "task_cleanup"
+CONFINED_CLEANUP_INPUT = "registered-task-resource"
 
 
 class ConsumerAuditCliTest(unittest.TestCase):
@@ -102,14 +106,23 @@ class ConsumerAuditCliTest(unittest.TestCase):
                 f"    {json.dumps(pattern)}: {action}"
                 for pattern, action in role_permissions.items()
             )
+            cleanup_action = "allow" if role in parent_roles else "deny"
             (agent_dir / f"{role}.md").write_text(
                 f"---\nmode: {mode}\nmodel: {model}\n"
-                f"permission:\n  bash:\n{permission_lines}\n---\n",
+                f"permission:\n  bash:\n{permission_lines}\n"
+                f"  {CONFINED_CLEANUP_TOOL}:\n    \"*\": {cleanup_action}\n---\n",
                 encoding="utf-8",
             )
 
         (bundle / "opencode.json").write_text(
-            json.dumps({"permission": {"bash": PARENT_BASH_PERMISSIONS}}),
+            json.dumps(
+                {
+                    "permission": {
+                        "bash": PARENT_BASH_PERMISSIONS,
+                        CONFINED_CLEANUP_TOOL: {"*": "allow"},
+                    }
+                }
+            ),
             encoding="utf-8",
         )
         source_prefix = "agents" if profile == "global" else ".opencode/agents"
@@ -151,6 +164,17 @@ class ConsumerAuditCliTest(unittest.TestCase):
                         'tool = "bash"',
                         f"input = {json.dumps(input_value)}",
                         f'classes = ["{class_id}"]',
+                    ]
+                )
+            if profile == "agent-core":
+                manifest_lines.extend(
+                    [
+                        "",
+                        "[[probes]]",
+                        f'surface = "{surface_id}"',
+                        f'tool = "{CONFINED_CLEANUP_TOOL}"',
+                        f'input = "{CONFINED_CLEANUP_INPUT}"',
+                        f'classes = ["{CONFINED_CLEANUP_CLASS}"]',
                     ]
                 )
         (bundle / "opencode-contract-permissions.toml").write_text(
@@ -316,6 +340,14 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
                             for line in lines
                         )
                     }
+                    if profile == "agent-core" and any(
+                        line.startswith(
+                            f"PASS profile={profile} surface={surface} "
+                        )
+                        and f"classes={CONFINED_CLEANUP_CLASS}" in line
+                        for line in lines
+                    ):
+                        observed.add(CONFINED_CLEANUP_CLASS)
                     self.assertTrue(mandatory_classes <= observed, surface)
                 self.assertTrue(
                     any(
@@ -455,6 +487,63 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
                 self.assertEqual(1, counts["DIFF"], lines)
                 self.assertEqual(0, counts["MISSING"], lines)
                 self.assertTrue(any(reason in line for line in lines), lines)
+
+    def test_confined_cleanup_class_rejects_shell_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            consumer = self.make_consumer(Path(temporary), "agent-core")
+            manifest = (
+                consumer
+                / "components/agent-core/opencode-contract-permissions.toml"
+            )
+            contents = manifest.read_text(encoding="utf-8").replace(
+                'input = "rm -rf cache"\nclasses = ["local-filesystem-delete"]',
+                'input = "rm -rf cache"\nclasses = '
+                '["local-filesystem-delete", "confined-task-resource-cleanup"]',
+                1,
+            )
+            manifest.write_text(contents, encoding="utf-8")
+            lines, counts = audit_profile("agent-core", consumer, self.documents)
+            self.assertEqual(1, counts["DIFF"], lines)
+            self.assertTrue(
+                any(
+                    "guarded_non_shell_api_required="
+                    "['confined-task-resource-cleanup'] tool='bash'" in line
+                    for line in lines
+                ),
+                lines,
+            )
+
+    def test_confined_cleanup_parent_allow_and_leaf_deny_are_enforced(self) -> None:
+        variants = (
+            ("task-orchestrator", "allow", "ask", "parent"),
+            ("general", "deny", "allow", "leaf"),
+        )
+        for role, expected, replacement, boundary in variants:
+            with self.subTest(boundary=boundary), tempfile.TemporaryDirectory() as temporary:
+                consumer = self.make_consumer(Path(temporary), "agent-core")
+                agent = (
+                    consumer
+                    / f"components/agent-core/.opencode/agents/{role}.md"
+                )
+                contents = agent.read_text(encoding="utf-8").replace(
+                    f'  {CONFINED_CLEANUP_TOOL}:\n    "*": {expected}',
+                    f'  {CONFINED_CLEANUP_TOOL}:\n    "*": {replacement}',
+                    1,
+                )
+                agent.write_text(contents, encoding="utf-8")
+                lines, counts = audit_profile(
+                    "agent-core", consumer, self.documents
+                )
+                self.assertEqual(1, counts["DIFF"], lines)
+                self.assertTrue(
+                    any(
+                        f"surface={role}" in line
+                        and f"classes={CONFINED_CLEANUP_CLASS}" in line
+                        and f"expected={expected} actual={replacement}" in line
+                        for line in lines
+                    ),
+                    lines,
+                )
 
     def test_permission_manifest_cannot_swap_authority_or_benign_source(self) -> None:
         variants = (
