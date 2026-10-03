@@ -1342,7 +1342,15 @@ metadata = ["attempts", "retry_reason", "worker", "configured_model", "required_
                 agent.symlink_to(external)
                 lines, counts = audit_profile(profile, consumer, self.documents)
                 self.assertTrue(any("role=general" in line and "unsafe_path=forbidden" in line for line in lines), lines)
-                self.assertEqual(6, counts["DIFF"])
+                permission_context, context_errors = _permission_contract_context(
+                    profile, self.documents
+                )
+                self.assertEqual([], context_errors)
+                assert permission_context is not None
+                self.assertEqual(
+                    1 + len(permission_context["mandatory_classes"]),
+                    counts["DIFF"],
+                )
 
     def test_cyclic_canonical_agent_symlink_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
