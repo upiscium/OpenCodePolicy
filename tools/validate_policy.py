@@ -34,6 +34,7 @@ PERMISSION_AUTHORITIES = ("approval-capable-parent", "non-interactive-leaf")
 PERMISSION_OPERATION_CLASSES = (
     "safe-read-only",
     "local-filesystem-delete",
+    "confined-task-resource-cleanup",
     "repository-history-destruction",
     "remote-destructive-operation",
     "privilege-escalation",
@@ -44,6 +45,7 @@ PERMISSION_ESCALATIONS = ("none", "NEEDS_APPROVAL", "BLOCKED")
 PERMISSION_REQUIRED_INVARIANT_IDS = (
     "bounded-safety-semantics-canonical",
     "permission-map-implementation-owned",
+    "confined-task-resource-cleanup-guarded",
     "leaf-no-direct-ask-execution-permission-mutation",
     "no-permission-bypass",
     "parent-independent-reevaluation-no-relay",
@@ -56,12 +58,14 @@ PERMISSION_REQUIRED_INVARIANT_IDS = (
 PERMISSION_CATEGORIES = (
     "safe",
     "bounded-destructive",
+    "guarded-destructive",
     "structural-destructive",
     "authority-change",
 )
 PERMISSION_OPERATION_CATEGORIES = {
     "safe-read-only": "safe",
     "local-filesystem-delete": "bounded-destructive",
+    "confined-task-resource-cleanup": "guarded-destructive",
     "repository-history-destruction": "structural-destructive",
     "remote-destructive-operation": "structural-destructive",
     "privilege-escalation": "authority-change",
@@ -132,17 +136,34 @@ PERMISSION_AUTHORITY_KEYS = {
 }
 PERMISSION_PROFILE_BINDING_KEYS = {"profile", "parent_authority", "leaf_authority"}
 
+PERMISSION_OPERATION_BASE_KEYS = {
+    "id",
+    "parent_disposition",
+    "leaf_disposition",
+    "parent_escalation",
+    "leaf_escalation",
+    "category",
+}
+PERMISSION_GUARDED_CLEANUP_REQUIRED_GUARDS = (
+    "exact-current-task-repository-worktree-identity",
+    "canonical-registered-task-resource-target",
+    "preserve-tracked-untracked-product-work",
+    "preserve-local-only-unpublished-commits",
+    "reject-absolute-traversal-git-admin-path-escape",
+    "reject-symlink-mount-external-filesystem-escape",
+    "no-shell-expansion-substitution-authority",
+    "exclude-default-repository-branch-history-destruction",
+    "exclude-force-reset-clean-history-rewrite",
+    "immediate-pre-delete-target-revalidation",
+    "parent-only-direct-invocation",
+)
 PERMISSION_OPERATION_KEYS = {
-    operation: {
-        "id",
-        "parent_disposition",
-        "leaf_disposition",
-        "parent_escalation",
-        "leaf_escalation",
-        "category",
-    }
+    operation: set(PERMISSION_OPERATION_BASE_KEYS)
     for operation in PERMISSION_OPERATION_CLASSES
 }
+PERMISSION_OPERATION_KEYS["confined-task-resource-cleanup"].update(
+    {"profiles", "invocation_boundary", "required_guards"}
+)
 
 PERMISSION_SIGNAL_VALUES = {
     "NEEDS_APPROVAL": {
@@ -291,6 +312,21 @@ def _permission_check_operation_semantics(
                 f"{location}.category: must be {expected_category!r}"
             )
 
+    if operation_id == "confined-task-resource-cleanup":
+        if operation.get("profiles") != ["agent-core"]:
+            errors.append(f"{location}.profiles: must be ['agent-core']")
+        if operation.get("invocation_boundary") != "guarded-non-shell-api":
+            errors.append(
+                f"{location}.invocation_boundary: must be 'guarded-non-shell-api'"
+            )
+        if operation.get("required_guards") != list(
+            PERMISSION_GUARDED_CLEANUP_REQUIRED_GUARDS
+        ):
+            errors.append(
+                f"{location}.required_guards: must be "
+                f"{list(PERMISSION_GUARDED_CLEANUP_REQUIRED_GUARDS)!r}"
+            )
+
     disposition_fields = ("parent_disposition", "leaf_disposition")
     escalation_fields = ("parent_escalation", "leaf_escalation")
     for field in disposition_fields:
@@ -336,7 +372,7 @@ def _permission_check_operation_semantics(
             if operation.get(field) == "allow":
                 errors.append(f"{location}.{field}: destructive or permission-mutating operations cannot allow")
 
-    if operation_id != "safe-read-only":
+    if operation_id not in {"safe-read-only", "confined-task-resource-cleanup"}:
         for disposition_field, escalation_field in zip(disposition_fields, escalation_fields):
             if operation.get(disposition_field) == "allow" and operation.get(escalation_field) == "none":
                 errors.append(
@@ -356,6 +392,13 @@ def _permission_check_operation_semantics(
             "leaf_disposition": "deny",
             "parent_escalation": "none",
             "leaf_escalation": "NEEDS_APPROVAL",
+        }
+    elif category == "guarded-destructive":
+        expected_matrix = {
+            "parent_disposition": "allow",
+            "leaf_disposition": "deny",
+            "parent_escalation": "none",
+            "leaf_escalation": "BLOCKED",
         }
     elif category in {"structural-destructive", "authority-change"}:
         expected_matrix = {

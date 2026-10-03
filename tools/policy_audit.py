@@ -37,6 +37,7 @@ PERMISSION_SURFACE_KEYS = {
 PERMISSION_PROBE_KEYS = {"surface", "tool", "input", "classes"}
 PERMISSION_BOUNDARIES = {"parent", "leaf"}
 PERMISSION_ACTIONS = {"allow", "ask", "deny"}
+PERMISSION_SHELL_TOOLS = {"bash", "sh", "shell", "zsh"}
 _PERMISSION_MISSING = object()
 
 
@@ -492,6 +493,8 @@ def _permission_contract_context(
                 else:
                     operations[operation_id] = operation
 
+    applicable_class_ids: list[str] = []
+    guarded_non_shell_classes: list[str] = []
     for class_id in class_ids:
         operation = operations.get(class_id)
         if operation is None:
@@ -509,9 +512,21 @@ def _permission_contract_context(
                     f"canonical {class_id}.{boundary}_escalation is invalid"
                 )
 
+        operation_profiles = operation.get("profiles", profiles)
+        if not isinstance(operation_profiles, list) or not all(
+            isinstance(item, str) and item for item in operation_profiles
+        ):
+            errors.append(f"canonical {class_id}.profiles is invalid")
+            continue
+        if profile not in operation_profiles:
+            continue
+        applicable_class_ids.append(class_id)
+        if operation.get("invocation_boundary") == "guarded-non-shell-api":
+            guarded_non_shell_classes.append(class_id)
+
     conditional_classes: list[str] = []
     if allow_requires_role_permission is True:
-        for class_id in class_ids:
+        for class_id in applicable_class_ids:
             operation = operations.get(class_id)
             if operation is not None and all(
                 operation.get(f"{boundary}_disposition") == "allow"
@@ -558,11 +573,14 @@ def _permission_contract_context(
     if errors:
         return None, errors
     return {
-        "classes": class_ids,
+        "classes": applicable_class_ids,
         "mandatory_classes": [
-            class_id for class_id in class_ids if class_id not in conditional_classes
+            class_id
+            for class_id in applicable_class_ids
+            if class_id not in conditional_classes
         ],
         "conditional_classes": conditional_classes,
+        "guarded_non_shell_classes": guarded_non_shell_classes,
         "operations": operations,
         "authorities": boundary_authorities,
         "signals": signal_ids,
@@ -597,6 +615,7 @@ def _permission_manifest_schema(
     profile: str,
     class_ids: list[str],
     mandatory_class_ids: list[str],
+    guarded_non_shell_class_ids: list[str],
     expected_surfaces: Mapping[str, tuple[str, str]],
     signal_ids: list[str],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
@@ -716,6 +735,7 @@ def _permission_manifest_schema(
     covered: dict[str, set[str]] = {surface_id: set() for surface_id in surface_order}
     class_set = set(class_ids)
     mandatory_class_set = set(mandatory_class_ids)
+    guarded_non_shell_class_set = set(guarded_non_shell_class_ids)
     if not isinstance(probes_value, list):
         errors.append("manifest probes must be a list")
     elif not probes_value:
@@ -772,6 +792,21 @@ def _permission_manifest_schema(
                         errors.append(f"{class_location} duplicate={class_id!r}")
                     seen_classes.add(class_id)
                     normalized_classes.append(class_id)
+
+            guarded_shell_classes = [
+                class_id
+                for class_id in normalized_classes
+                if class_id in guarded_non_shell_class_set
+            ]
+            if (
+                guarded_shell_classes
+                and isinstance(tool, str)
+                and tool in PERMISSION_SHELL_TOOLS
+            ):
+                errors.append(
+                    f"{location}.classes guarded_non_shell_api_required="
+                    f"{guarded_shell_classes!r} tool={tool!r}"
+                )
 
             if valid_identity:
                 probe_key = (surface_id, tool, input_value)
@@ -1076,6 +1111,7 @@ def _audit_permission_contract(
         profile,
         context["classes"],
         context["mandatory_classes"],
+        context["guarded_non_shell_classes"],
         expected_surfaces,
         context["signals"],
     )

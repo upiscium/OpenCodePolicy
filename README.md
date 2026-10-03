@@ -116,18 +116,23 @@ The closed-world operation classes and required dispositions are:
 | --- | --- | --- | --- |
 | `safe-read-only` | `allow` | `allow` | none |
 | `local-filesystem-delete` | `ask` | `deny` | `NEEDS_APPROVAL` |
+| `confined-task-resource-cleanup` (Agent-Core) | `allow` | `deny` | parent: none; leaf: `BLOCKED` |
 | `repository-history-destruction` | `deny` | `deny` | `BLOCKED` |
 | `remote-destructive-operation` | `deny` | `deny` | `BLOCKED` |
 | `privilege-escalation` | `deny` | `deny` | `BLOCKED` |
 | `system-store-destruction` | `deny` | `deny` | `BLOCKED` |
 
-The `allow` disposition is conditional: a consumer may allow a safe/read-only
-operation only where its configured role permission permits it. The contract
-does not define that role permission map.
+Every `allow` disposition still requires the configured role permission to
+permit the concrete operation. Coverage is conditional only for classes that
+are `allow` at every applicable authority boundary, such as
+`safe-read-only`. `confined-task-resource-cleanup` is mandatory for the
+Agent-Core permission surfaces because its leaf boundary is explicitly denied.
 
 This is a bounded classification contract, not an exhaustive taxonomy of every
-operation a consumer may implement. The closed world is closed over the six
+operation a consumer may implement. The closed world is closed over the seven
 semantic class identifiers after a consumer supplies a semantic classification.
+Classes may declare profile applicability; the confined Task-resource cleanup
+class applies only to the Agent-Core profile.
 Consumer operations outside this bounded safety boundary remain consumer-owned
 and are not silently assigned a canonical disposition. An unknown or malformed
 class identifier presented to this contract is fail-closed as `BLOCKED`.
@@ -140,6 +145,21 @@ approval path.
 
 Local filesystem deletion is the bounded approval path: the parent asks the
 user, while the leaf denies direct execution and returns `NEEDS_APPROVAL`.
+Raw or ambiguous deletion remains in this class.
+
+`confined-task-resource-cleanup` is a narrower Agent-Core-only class for a
+guarded high-level cleanup operation. Its parent disposition is `allow`, its
+leaf disposition is `deny` with `BLOCKED`, and it is valid only through a
+guarded non-shell API after the implementation has mechanically proven the
+canonical safety predicates recorded in the policy: exact Task/repository/
+worktree identity, canonical registered target identity, preservation of
+tracked/untracked product work and unpublished commits, normalized path
+confinement, symlink/mount/external-filesystem confinement, no shell expansion
+as authority, exclusion of default-branch/history destruction and force/reset/
+clean rewrites, and immediate target revalidation before deletion. A manifest
+probe for this class on a shell tool is rejected by the audit. The concrete API
+name and implementation remain consumer-owned.
+
 `NEEDS_APPROVAL` is the minimum non-terminal escalation outcome; it grants no
 execution authority and must identify the operation class and operation,
 scope, purpose, evidence, least-privilege basis, safe alternatives, and
@@ -153,6 +173,7 @@ command literals in this repository:
 | Semantic class | Example mappings |
 | --- | --- |
 | `local-filesystem-delete` | `rm`, `rm -r`, `rm -rf`, `rmdir` |
+| `confined-task-resource-cleanup` | a guarded Agent-Core Task cleanup API after its required mechanical proofs pass |
 | `repository-history-destruction` | `git reset --hard`, `git clean`, history rewriting |
 | `remote-destructive-operation` | force push, remote branch/tag deletion, repository deletion |
 | `privilege-escalation` | `sudo` |
@@ -234,8 +255,9 @@ operation. `safe-read-only` therefore does not require every consumer role to
 permit `bash` or another safe operation. If a surface declares a safe-read-only
 probe, it has declared that consumer-owned operation as permitted and the
 effective stack must explicitly resolve it to `allow`; `ask`, `deny`, and
-`unproven` are drift. Classes with any non-`allow` safety disposition remain
-mandatory coverage and cannot be omitted to bypass the audit.
+`unproven` are drift. Classes with any non-`allow` safety disposition remain mandatory coverage
+within every profile where that class applies and cannot be omitted to bypass
+the audit.
 
 The canonical profile policy binds the required executable authority surfaces:
 Global `build` is the approval-capable `parent`; Global subagents are `leaf`
@@ -278,10 +300,10 @@ Adapter details. Consumers own those implementation details, and semantic
 authority can differ by profile even when a role name and model assignment are
 shared.
 
-In contrast, the bounded cross-consumer safety semantics above are canonical:
-the six operation classes, their required dispositions and escalation outcomes,
-and the common safety invariants apply across consumers without prescribing
-their full permissions.
+In contrast, the bounded permission safety semantics above are canonical: the
+seven operation classes, their profile applicability, required dispositions,
+escalation outcomes, guarded-cleanup safety predicates, and the common safety
+invariants apply without prescribing consumers' full permission maps.
 
 ## Validate policy
 

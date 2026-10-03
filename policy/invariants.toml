@@ -65,6 +65,12 @@ contract = "permission-semantics"
 statement = "Consumers own complete permission maps, OpenCode glob and pattern spelling, prompt wording, guarded APIs, Task lifecycle, and provider, UI, and machine details."
 
 [[invariants]]
+id = "confined-task-resource-cleanup-guarded"
+scope = "common"
+contract = "permission-semantics"
+statement = "Confined Task-resource cleanup is AgentCore-only and may be parent-allowed only through a guarded non-shell operation that mechanically proves exact Task/resource identity, confinement, and no product-work or unpublished-history loss; raw filesystem deletion remains on the local-filesystem-delete approval path."
+
+[[invariants]]
 id = "leaf-no-direct-ask-execution-permission-mutation"
 scope = "common"
 contract = "permission-semantics"
